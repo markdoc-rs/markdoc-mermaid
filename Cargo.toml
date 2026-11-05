@@ -1,0 +1,16 @@
+[package]
+name = "markdoc-mermaid"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Mermaid diagrams for Markdoc, with node labels resolved from document anchors."
+repository = "https://github.com/markdoc-rs/markdoc-mermaid"
+
+[lib]
+name = "markdoc_mermaid"
+path = "src/lib.rs"
+
+[dependencies]
+# `default-features = false` drops its CLI (clap) and PNG (resvg/usvg)
+# stacks. This crate wants SVG and nothing else.
+mermaid-rs-renderer = { version = "0.3.1", default-features = false }
