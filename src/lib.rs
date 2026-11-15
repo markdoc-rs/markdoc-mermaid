@@ -38,6 +38,13 @@
 //! needs the opposite — something that sizes itself to the column and takes
 //! its colours from the page, in dark mode and in print. See [`theme`].
 //!
+//! # Making a diagram interactive
+//!
+//! [`flowchart`] returns the nodes and edges [`render`] draws, and the SVG
+//! names the same: `data-from` and `data-to` beside every `data-edge-id`,
+//! and `<g class="node" data-node-id="…">` around every node. With the
+//! `serde` feature the graph is `Serialize`.
+//!
 //! # Choice of renderer
 //!
 //! `mermaid-rs-renderer`, for two reasons that are not about features.
@@ -56,11 +63,13 @@
 //! it will be replaced. Nothing a caller touches names it.
 
 mod expand;
+mod graph;
 mod layout;
 mod route;
 mod theme;
 
 pub use expand::{Expanded, expand as expand_source};
+pub use graph::{Edge, Flowchart, Node, Subgraph, flowchart};
 pub use layout::Layout;
 
 /// What a document knows about one anchor id.
@@ -167,11 +176,16 @@ pub fn render(source: &str, anchors: &dyn Anchors, options: &Options) -> Result<
     let theme = mermaid_rs_renderer::Theme::modern();
     let config = options.layout.to_config();
     let mut layout = mermaid_rs_renderer::compute_layout(&parsed.graph, &theme, &config);
-    if options.layout.tidy_edges && parsed.graph.kind == mermaid_rs_renderer::DiagramKind::Flowchart
-    {
+    let flowchart = parsed.graph.kind == mermaid_rs_renderer::DiagramKind::Flowchart;
+    if options.layout.tidy_edges && flowchart {
         route::tidy(&mut layout, parsed.graph.direction);
     }
-    let svg = mermaid_rs_renderer::render_svg(&layout, &theme, &config);
+    // A flowchart's nodes and edge ends are named in the SVG (`graph`).
+    let svg = if flowchart {
+        graph::draw(layout, &theme, &config)
+    } else {
+        mermaid_rs_renderer::render_svg(&layout, &theme, &config)
+    };
     let svg = if options.themeable {
         theme::themeable(&svg, &options.class)
     } else {

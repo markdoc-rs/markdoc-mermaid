@@ -145,6 +145,35 @@ from the caller**: the diagram rendered, but nothing resolved, so either it is
 hand-labelled — fine — or the ids are misspelt and a reader is about to meet a
 diagram of identifiers.
 
+## Making it interactive
+
+`flowchart` returns the nodes and edges `render` draws, read by the
+renderer's own parser so the graph and the picture cannot disagree:
+
+```rust
+let graph = markdoc_mermaid::flowchart(source, &anchors).expect("a flowchart");
+for edge in &graph.edges {
+    // edge.id is the SVG's data-edge-id: "edge-0", "edge-1", … in source order
+    println!("{} {} -> {} {:?}", edge.id, edge.from, edge.to, edge.label);
+}
+```
+
+`nodes` come in the order the source first names them, labelled with the
+heading where an id resolved; `edges` in source order, a chain `a --> b --> c`
+and a fan-out `a --> b & c` each counting as two; an edge into a subgraph
+names the subgraph. Anything but a flowchart is `None`. With the `serde`
+feature every type is `Serialize`.
+
+The SVG carries the same names:
+
+| element | gets |
+|---------|------|
+| everything with a `data-edge-id` (path, label, label backplate) | `data-from`, `data-to` |
+| each node (its shapes, text, and link if any) | wrapped in `<g class="node" data-node-id="…">` |
+
+so `svg.querySelectorAll('[data-to="step_two"]')` finds every edge into a
+step. Nothing else in the drawing changes.
+
 ## Choice of renderer
 
 `mermaid-rs-renderer`, for two reasons that are not about features.
@@ -169,6 +198,7 @@ be replaced. Nothing a caller touches names it.
 - [x] SVG reworked so the page owns size and colour
 - [x] Deterministic output — the same source renders the same bytes
 - [x] Spacing control, with a default that keeps branch conditions readable
+- [x] A flowchart's graph as data, and its node and edge ids in the SVG
 - [ ] Diagram types beyond flowchart exercised against real content. The
       renderer claims 23; only flowchart has been looked at
 - [ ] Rhombus nodes (`A{...}`). 0.3.1 lays them out poorly — a large diamond

@@ -1,6 +1,6 @@
 [package]
 name = "markdoc-mermaid"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
 description = "Mermaid diagrams for Markdoc, with node labels resolved from document anchors."
@@ -14,3 +14,12 @@ path = "src/lib.rs"
 # `default-features = false` drops its CLI (clap) and PNG (resvg/usvg)
 # stacks. This crate wants SVG and nothing else.
 mermaid-rs-renderer = { version = "0.3.1", default-features = false }
+# `Serialize` for the flowchart graph (`Flowchart` and its parts), for a
+# page that ships it beside the SVG as JSON.
+serde = { version = "1", features = ["derive"], optional = true }
+
+[dev-dependencies]
+serde_json = "1"
+
+[features]
+serde = ["dep:serde"]
