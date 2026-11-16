@@ -24,8 +24,8 @@ use crate::{Anchors, expand};
 pub struct Flowchart {
     /// Every node drawn, in the order the source first names it.
     pub nodes: Vec<Node>,
-    /// Every edge, in source order: a chain `a --> b --> c` is two, and so
-    /// is `a --> b & c`.
+    /// Every edge, in source order: a chain `a --> b --> c` is two, labelled
+    /// or not (`a -- yes --> b -- no --> c`), and so is `a --> b & c`.
     pub edges: Vec<Edge>,
     /// Every subgraph, in source order.
     pub subgraphs: Vec<Subgraph>,
@@ -448,6 +448,23 @@ mod tests {
     }
 
     #[test]
+    fn a_chain_with_a_labelled_link_is_one_edge_per_link() {
+        // Read as one edge, the first labelled link with the rest of the line
+        // as its far end, until VENDORED.md change 14.
+        let g = graph("flowchart TD\n  a -- Yes --> b -- No --> c\n  c --> d -->|done| e\n");
+        assert_eq!(node_ids(&g), vec!["a", "b", "c", "d", "e"]);
+        assert_eq!(
+            edges(&g),
+            vec![
+                ("edge-0", "a", "b", Some("Yes")),
+                ("edge-1", "b", "c", Some("No")),
+                ("edge-2", "c", "d", None),
+                ("edge-3", "d", "e", Some("done")),
+            ]
+        );
+    }
+
+    #[test]
     fn an_ampersand_fans_out_and_in() {
         let g = graph("flowchart TD\n  a --> b & c\n  b & c --> d\n");
         assert_eq!(
@@ -583,6 +600,7 @@ mod tests {
         for source in [
             "flowchart TD\n  a --> b --> c\n  c -- \"yes\" --> d\n  c -->|no| a\n",
             "flowchart TD\n  q -- \"one\" --> a & b\n  a & b --> done\n",
+            "flowchart TD\n  a -- Yes --> b -- No --> c\n  c --> d -->|done| e\n",
         ] {
             let g = graph(source);
             let svg = svg(source);

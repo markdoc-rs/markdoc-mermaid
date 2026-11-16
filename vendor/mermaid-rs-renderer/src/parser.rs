@@ -77,6 +77,29 @@ static ARROW_TOKEN_RE: Lazy<Regex> = Lazy::new(|| {
     .unwrap()
 });
 
+/// markdoc-mermaid: one link of a chain, labelled or not, as
+/// `split_labelled_chain` finds them left to right in the masked line.
+///
+/// `text` is a labelled link as Mermaid's lexer reads one: an opening (`--`,
+/// `==` or `-.`, with the `<`, `x` or `o` it may carry), the text, and a whole
+/// link closing it (`-->`, `---`, `--x`, `==>`, `.->`, ...). It covers the
+/// quoted form too, because the mask keeps the opening quote and blanks the
+/// rest: `-- "Yes" -->` reads `-- "     -->`. The text takes what
+/// `LABEL_ARROW_RE` takes. `compact` is `-.text.->`; `plain` is a link with no
+/// text, and `pipe` the `|text|` after one.
+static CHAIN_LINK_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        concat!(
+            r"(?P<text><?[xo]?(?:--|==|-\.)\s+[^<>=]+?\s+(?:--+[-xo>]|==+[=xo>]|-?\.+-[xo>]?))",
+            r"|(?P<compact><?[xo]?-\.[^\s.<>=|-][^<>=|]*?\.-+[xo>]?)",
+            r"|(?P<plain><ARROW>|<ARROW|ARROW>|ARROW)(?P<pipe>\s*\|[^|]*\|)?",
+        )
+        .replace("ARROW", ARROW_CORE)
+        .as_str(),
+    )
+    .unwrap()
+});
+
 #[derive(Debug, Default)]
 pub struct ParseOutput {
     pub graph: Graph,
@@ -5749,6 +5772,11 @@ fn split_whitespace_outside_brackets(line: &str) -> Vec<&str> {
 
 fn split_edge_chain(line: &str) -> Option<Vec<String>> {
     let masked = mask_bracket_content(line);
+    // markdoc-mermaid: a chain with a labelled link in it is cut here, before
+    // the checks below give up on it (`split_labelled_chain`).
+    if let Some(statements) = split_labelled_chain(line, &masked) {
+        return Some(statements);
+    }
     if PIPE_LABEL_RE.is_match(&masked)
         || QUOTED_LABEL_ARROW_RE.is_match(line)
         || LABEL_ARROW_RE.is_match(&masked)
@@ -5800,6 +5828,64 @@ fn split_edge_chain(line: &str) -> Option<Vec<String>> {
         statements.push(format!("{} {} {}", nodes[i], arrows[i], nodes[i + 1]));
     }
     Some(statements)
+}
+
+/// markdoc-mermaid: a chain any of whose links carries a label, as one
+/// statement per link, the way Mermaid reads it: `a -- Yes --> b -- No --> c`
+/// is `a -- Yes --> b` and `b -- No --> c`.
+///
+/// Upstream's `split_edge_chain` gives up on a line with a labelled link in
+/// it, and `parse_edge_line` then reads one link, with the rest of the line as
+/// its far end: `a -- Yes --> b -- No --> c` drew a -> b and lost `c`, and
+/// `a --> b -- No --> c` drew a -> c and lost `b`. Here the links are found
+/// left to right with [`CHAIN_LINK_RE`], on the masked line so that nothing in
+/// a bracket or a quote is taken for one, and each statement then goes through
+/// `parse_edge_line` as a line of its own.
+///
+/// `None` leaves the line to upstream's reading, unchanged: fewer than two
+/// links, no label on any of them, or a bare `--` or `==` left over. That is
+/// the opening of a labelled link this could not read (its text holds a `<`,
+/// say, which `LABEL_ARROW_RE` does not take either) or a link Mermaid does not
+/// close, such as `a -- text -- b`, which upstream reads as one labelled edge.
+fn split_labelled_chain(line: &str, masked: &str) -> Option<Vec<String>> {
+    let links: Vec<regex::Captures> = CHAIN_LINK_RE.captures_iter(masked).collect();
+    if links.len() < 2 {
+        return None;
+    }
+    let mut labelled = false;
+    for link in &links {
+        match (link.name("plain"), link.name("pipe")) {
+            (Some(plain), None) if matches!(plain.as_str(), "--" | "==") => return None,
+            (Some(_), None) => {}
+            _ => labelled = true,
+        }
+    }
+    if !labelled {
+        return None;
+    }
+
+    // The mask keeps byte positions, so a link found in it is sliced from the
+    // line itself, quotes and brackets intact.
+    let mut nodes = Vec::with_capacity(links.len() + 1);
+    let mut arrows = Vec::with_capacity(links.len());
+    let mut last = 0usize;
+    for link in &links {
+        let span = link.get(0)?;
+        nodes.push(line[last..span.start()].trim());
+        arrows.push(line[span.start()..span.end()].trim());
+        last = span.end();
+    }
+    nodes.push(line[last..].trim());
+    if nodes.iter().any(|node| node.is_empty()) {
+        return None;
+    }
+    Some(
+        arrows
+            .iter()
+            .enumerate()
+            .map(|(i, arrow)| format!("{} {} {}", nodes[i], arrow, nodes[i + 1]))
+            .collect(),
+    )
 }
 
 fn parse_edge_line(line: &str) -> Option<(String, Option<String>, String, EdgeMeta)> {
@@ -7122,6 +7208,138 @@ A["foo & bar"] & B --> C"#;
         let parsed = parse_mermaid("A --> B").unwrap();
         assert_eq!(parsed.graph.kind, DiagramKind::Flowchart);
         assert_eq!(parsed.graph.edges.len(), 1);
+    }
+
+    /// markdoc-mermaid: a flowchart's edges as `(from, to, label)`, in order.
+    fn edge_triples(input: &str) -> Vec<(String, String, Option<String>)> {
+        parse_mermaid(input)
+            .unwrap()
+            .graph
+            .edges
+            .iter()
+            .map(|e| (e.from.clone(), e.to.clone(), e.label.clone()))
+            .collect()
+    }
+
+    fn triple(from: &str, to: &str, label: Option<&str>) -> (String, String, Option<String>) {
+        (from.to_string(), to.to_string(), label.map(str::to_string))
+    }
+
+    #[test]
+    fn a_chain_with_a_labelled_link_is_one_edge_per_link() {
+        // markdoc-mermaid: `split_labelled_chain`. Upstream read each of these
+        // as one edge: the first labelled link, with the rest of the line as
+        // its far end.
+        let cases = [
+            (
+                "flowchart TD\na -- Yes --> b -- No --> c",
+                vec![triple("a", "b", Some("Yes")), triple("b", "c", Some("No"))],
+            ),
+            (
+                "flowchart TD\na -- Yes --> b --> c",
+                vec![triple("a", "b", Some("Yes")), triple("b", "c", None)],
+            ),
+            (
+                "flowchart TD\na --> b -- No --> c",
+                vec![triple("a", "b", None), triple("b", "c", Some("No"))],
+            ),
+            (
+                "flowchart TD\na{Ready?} -->|Yes| b --> c & d",
+                vec![
+                    triple("a", "b", Some("Yes")),
+                    triple("b", "c", None),
+                    triple("b", "d", None),
+                ],
+            ),
+            (
+                "flowchart TD\na --> |Yes| b --> c",
+                vec![triple("a", "b", Some("Yes")), triple("b", "c", None)],
+            ),
+            (
+                "flowchart TD\na -- Yes --> b & c --> d",
+                vec![
+                    triple("a", "b", Some("Yes")),
+                    triple("a", "c", Some("Yes")),
+                    triple("b", "d", None),
+                    triple("c", "d", None),
+                ],
+            ),
+            (
+                "flowchart TD\na -- \"Yes, it is\" --> b -- \"No --> not yet\" --> c",
+                vec![
+                    triple("a", "b", Some("Yes, it is")),
+                    triple("b", "c", Some("No --> not yet")),
+                ],
+            ),
+            (
+                "flowchart TD\nalpha-one -- Yes --> beta-two -- x-axis --> gamma-three",
+                vec![
+                    triple("alpha-one", "beta-two", Some("Yes")),
+                    triple("beta-two", "gamma-three", Some("x-axis")),
+                ],
+            ),
+            (
+                "flowchart TD\na[Is it on?] -- Yes --> b(Check the cable) -- No --> c",
+                vec![triple("a", "b", Some("Yes")), triple("b", "c", Some("No"))],
+            ),
+        ];
+        for (input, want) in cases {
+            assert_eq!(edge_triples(input), want, "{input}");
+        }
+        let parsed =
+            parse_mermaid("flowchart TD\na[Is it on?] -- Yes --> b(Check the cable) -- No --> c")
+                .unwrap();
+        assert_eq!(parsed.graph.nodes.len(), 3);
+        assert_eq!(parsed.graph.nodes["a"].label, "Is it on?");
+        assert_eq!(parsed.graph.nodes["b"].label, "Check the cable");
+    }
+
+    #[test]
+    fn a_chain_keeps_the_style_of_each_link() {
+        // markdoc-mermaid: each link of a chain is read on its own, so each
+        // keeps its own line and ends.
+        use crate::ir::{EdgeDecoration, EdgeStyle};
+        let parsed =
+            parse_mermaid("flowchart LR\na -. maybe .-> b == sure ==> c -.later.-> d --x e")
+                .unwrap();
+        let got: Vec<_> = parsed
+            .graph
+            .edges
+            .iter()
+            .map(|e| (e.from.as_str(), e.to.as_str(), e.label.as_deref(), e.style))
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                ("a", "b", Some("maybe"), EdgeStyle::Dotted),
+                ("b", "c", Some("sure"), EdgeStyle::Thick),
+                ("c", "d", Some("later"), EdgeStyle::Dotted),
+                ("d", "e", None, EdgeStyle::Solid),
+            ]
+        );
+        assert_eq!(
+            parsed.graph.edges[3].end_decoration,
+            Some(EdgeDecoration::Cross)
+        );
+    }
+
+    #[test]
+    fn a_line_with_one_link_or_no_label_is_read_as_before() {
+        // markdoc-mermaid: `split_labelled_chain` leaves these to upstream's
+        // reading. `a -- text -- b` closes on a bare `--`, which is not a link
+        // there; upstream reads the line as one labelled edge, and still does.
+        assert_eq!(
+            edge_triples("flowchart TD\na -- Yes --> b"),
+            vec![triple("a", "b", Some("Yes"))]
+        );
+        assert_eq!(
+            edge_triples("flowchart TD\na --> b --> c"),
+            vec![triple("a", "b", None), triple("b", "c", None)]
+        );
+        assert_eq!(
+            edge_triples("flowchart TD\na -- text -- b"),
+            vec![triple("a", "b", Some("text"))]
+        );
     }
 
     #[test]

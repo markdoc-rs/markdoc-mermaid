@@ -242,3 +242,33 @@ with a `markdoc-mermaid:` comment saying why, so it is not mistaken for upstream
    514 fonts), where the edge takes a 16px dogleg. That is the environment, not the layout,
    and it is upstream's behaviour either way — this renderer's geometry is font-dependent
    throughout. Run it with `cargo test -- --ignored` on a DejaVu host.
+
+### Fixed since 0.3.0
+
+14. **A chain with a labelled link** (`split_labelled_chain` and `CHAIN_LINK_RE` in
+    `src/parser.rs`). Mermaid reads `A -- text --> B -- text2 --> C` as two links, each
+    with its own text, and a chain may mix labelled links with plain ones. Upstream's
+    `split_edge_chain` gave up on any line with a labelled link in it and left the whole
+    line to `parse_edge_line`, which reads one link: the first labelled one, with the rest
+    of the line as its far end. The picture then disagreed with its source, silently:
+
+    | source line | upstream drew |
+    |---|---|
+    | `a -- Yes --> b -- No --> c` | a → b only; `c` is not drawn |
+    | `a -- Yes --> b --> c` | a → b only; `c` is not drawn |
+    | `a --> b -- No --> c` | a → c "No"; `b` is not drawn |
+    | `a{Q?} -->\|Yes\| b --> c & d` | a → b and a → d, both "Yes"; `c` is not drawn |
+
+    The line is now cut at every link, found left to right by one pattern that knows the
+    labelled forms — `-- text -->`, `-- "text" -->`, `== text ==>`, `-. text .->`,
+    `-.text.->` and `-->|text|` — and each piece goes through `parse_edge_line` as a line
+    of its own, so each link keeps its own text, line style and ends. A labelled link is
+    what Mermaid's lexer reads as one: an opening (`--`, `==` or `-.`), the text, and a
+    whole link closing it (`-->`, `---`, `--x`, `==>`, `.->`). The pattern runs on the
+    masked line, so a link inside a bracketed or quoted label is never taken for one.
+
+    Everything else is read as upstream reads it: a line with one link, a chain with no
+    label, and a line where a bare `--` or `==` is left over. That is either the opening
+    of a labelled link the pattern could not read (its text holds a `<`, which
+    `LABEL_ARROW_RE` does not take either) or `a -- text -- b`, which closes on a bare
+    `--` and which upstream reads as one labelled edge.
