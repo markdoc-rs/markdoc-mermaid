@@ -1,8 +1,8 @@
 # mermaid-rs-renderer, vendored
 
 This directory is [mermaid-rs-renderer](https://github.com/1jehuang/mermaid-rs-renderer)
-0.3.1, the Mermaid renderer `markdoc-mermaid` draws with, carried here with the fixes
-below. It was a crates.io dependency until markdoc-mermaid 0.3.0.
+0.3.1, the Mermaid renderer the crate above draws with, carried here with the fixes
+below. It was a dependency from crates.io until that crate's 0.3.0.
 
 - Source: the crates.io package `mermaid-rs-renderer-0.3.1` (checksum
   `6cb5b469222ce6b9896edf0a969cf68464f5a028ef394fd6643f00bd943df117`), which is the
@@ -13,23 +13,23 @@ below. It was a crates.io dependency until markdoc-mermaid 0.3.0.
   publishing as below) and `Cargo.toml.orig` (the repository's). Left out: `src/main.rs`,
   `src/cli.rs` and `tests/cli_suite.rs` (change 1), the package's `Cargo.lock`, and the
   registry's bookkeeping files. Added: `docs/comparison_sources/` (change 2), and
-  and the files that are not upstream's at all: `src/entities.rs` (change 11) and
+  the files that are not upstream's at all: `src/entities.rs` (change 11) and
   `src/layout/{wardley,cynefin,venn,ishikawa}.rs` (change 12).
-  mermaid-rs-renderer is MIT, as markdoc-mermaid is; `LICENSE` is kept unchanged, and the
+  mermaid-rs-renderer is MIT, as the crate carrying it is; `LICENSE` is kept unchanged, and the
   copyright in it is upstream's.
-- Published to crates.io as `markdoc-mermaid-renderer`, because the published
-  `markdoc-mermaid` gets its dependencies from there (packaging drops `path`, and
+- Published to crates.io as `markdoc-mermaid-renderer`, because the published parent
+  gets its dependencies from there (packaging drops `path`, and
   `[patch]` does not travel). Its `Cargo.toml` differs from the package's in `name`,
   `description`, `readme` (this file) and `repository`, in
   `exclude = ["Cargo.toml.orig"]` (a name `cargo package` reserves), and in the features
   and dependencies dropped by change 1. The library is still `mermaid_rs_renderer`.
-- `markdoc-mermaid`'s `Cargo.toml` takes it as `mermaid-rs-renderer = { package =
-  "markdoc-mermaid-renderer", version = "0.3.1", path = "vendor/mermaid-rs-renderer" }`.
-  It is published before `markdoc-mermaid`:
+- The parent's `Cargo.toml` takes it as `mermaid-rs-renderer = { package =
+  "markdoc-mermaid-renderer", version = "0.3.2", path = "vendor/mermaid-rs-renderer" }`.
+  It is published before the parent:
   `cargo publish --manifest-path vendor/mermaid-rs-renderer/Cargo.toml`. A change here is
-  published as a new version of `markdoc-mermaid-renderer`, which `markdoc-mermaid` must
-  then require.
-- Its own test suite runs on its own, and is not part of markdoc-mermaid's `cargo test`:
+  published as a new version of `markdoc-mermaid-renderer`, which the parent must then
+  require.
+- Its own test suite runs on its own, and is not part of the parent's `cargo test`:
   `cargo test --manifest-path vendor/mermaid-rs-renderer/Cargo.toml`.
   `.github/scripts/check.sh` runs it as its own step.
 
@@ -37,13 +37,13 @@ below. It was a crates.io dependency until markdoc-mermaid 0.3.0.
 
 The published source is not `rustfmt`-clean against current rustfmt, in files nothing here
 has touched. `check.sh` therefore does not run `cargo fmt --check` over this directory, and
-markdoc-mermaid's own `cargo fmt --check` does not reach it: a path dependency is not a
+the parent's own `cargo fmt --check` does not reach it: a path dependency is not a
 workspace member. The changes below were written to match the surrounding style.
 
 ## Changes
 
 Each is a change to upstream's behaviour or its packaging, and each is marked in the source
-with a `markdoc-mermaid:` comment saying why, so it is not mistaken for upstream's own code.
+with a `vendored:` comment saying why, so it is not mistaken for upstream's own code.
 
 ### Packaging
 
@@ -51,7 +51,7 @@ with a `markdoc-mermaid:` comment saying why, so it is not mistaken for upstream
    vendored, the `cli` and `png` features and the `clap`, `resvg` and `usvg` dependencies
    are gone from `Cargo.toml`, and the `#[cfg(feature = "png")]` items in `src/render.rs`
    and `src/lib.rs` (`write_output_png`, `parse_hex_color`, `primary_font`, two tests) are
-   removed with them. markdoc-mermaid took the crate with `default-features = false` for
+   removed with them. The parent took the crate with `default-features = false` for
    exactly this; the code is now absent rather than switched off, so no feature can turn it
    back on. A diagram in a document is SVG, which keeps `<text>` as selectable text in
    print rather than a picture of text.
@@ -76,7 +76,8 @@ with a `markdoc-mermaid:` comment saying why, so it is not mistaken for upstream
    - `ARROW_RE` and `split_edge_chain` cut hyphenated ids in half: `alpha-one --> beta-two`
      parsed as the four nodes `alpha`, `ne`, `beta`, `two`. Upstream masks *bracketed*
      labels against this already (`A[wi-fi]`), but an id is not bracketed, and a
-     documentation anchor — markdoc-mermaid's whole input — is usually a hyphenated slug.
+     documentation anchor id, which is what a caller resolving labels passes in, is
+     usually a hyphenated slug.
 
    Every mermaid link carries at least two of `-` or `=`, so the core now requires two:
    `[-.=ox]*[-=][-.=ox]*[-=][-.=ox]*`. `--`, `---`, `-->`, `-.->`, `==>`, `--x`, `--o` and
@@ -160,11 +161,11 @@ with a `markdoc-mermaid:` comment saying why, so it is not mistaken for upstream
     "numbers given are base 10, so `#` can be encoded as `#35;`. It is also supported to use
     HTML character names."
 
-    This was the user-visible one. markdoc-mermaid's `expand::quote` has to write a `"` in a
-    heading as `#quot;`, because the heading is put inside a bracketed label and a bare
+    This was the user-visible one. A caller that puts document text into a label has to
+    write a `"` as `#quot;`, because the text goes inside a bracketed label and a bare
     quotation mark would close it early — so a heading with a quotation mark in it drew
-    `#quot;` where the mark should be, and the label was not the heading after all, which is
-    the one thing that crate exists to guarantee.
+    `#quot;` where the mark should be, and the label was not the heading after all, which
+    is the one thing such a caller exists to guarantee.
 
     Decoded at measurement, in `measure_label_with_max_width`, which is the single funnel
     every diagram kind's text passes through on its way into the `TextBlock` the renderer
@@ -243,7 +244,7 @@ with a `markdoc-mermaid:` comment saying why, so it is not mistaken for upstream
    and it is upstream's behaviour either way — this renderer's geometry is font-dependent
    throughout. Run it with `cargo test -- --ignored` on a DejaVu host.
 
-### Fixed since 0.3.0
+### Fixed since 0.3.1
 
 14. **A chain with a labelled link** (`split_labelled_chain` and `CHAIN_LINK_RE` in
     `src/parser.rs`). Mermaid reads `A -- text --> B -- text2 --> C` as two links, each

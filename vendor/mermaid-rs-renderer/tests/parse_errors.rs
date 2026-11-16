@@ -344,7 +344,7 @@ fn sequence_unclosed_frame_is_reported() {
 }
 
 // =====================================================================
-// markdoc-mermaid: an unrecognised header is an error, not a flowchart
+// vendored: an unrecognised header is an error, not a flowchart
 // =====================================================================
 
 /// Every diagram type mermaid documents but this renderer has no parser for.
@@ -428,7 +428,7 @@ fn a_lone_hyphen_does_not_make_a_flowchart() {
     assert!(parse_mermaid_strict("some-word\n").is_err());
 }
 
-// markdoc-mermaid: the geometry-driven kinds added after the four graph-shaped
+// vendored: the geometry-driven kinds added after the four graph-shaped
 // ones, each with its own layout module. Their coordinates come from the
 // source, so `validate_layout_invariants` is the thing that holds them to the
 // layout they declare.

@@ -78,12 +78,13 @@
 //!
 //! ## This is a vendored copy
 //!
-//! markdoc-mermaid carries this renderer rather than depending on it; see
-//! `VENDORED.md` for the upstream revision and every change made here. The
+//! The crate in the directory above carries this renderer rather than
+//! depending on it; see `VENDORED.md` for the upstream revision and every
+//! change made here. The
 //! CLI and the PNG stack are not part of this copy: a diagram in a document
 //! is drawn as SVG, so `<text>` stays selectable text in print.
 
-// markdoc-mermaid: Mermaid's `#…;` escapes, which upstream never read.
+// vendored: Mermaid's `#…;` escapes, which upstream never read.
 pub mod entities;
 
 pub mod config;

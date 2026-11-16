@@ -236,10 +236,10 @@ pub fn validate_layout_invariants(layout: &Layout) -> Result<(), Vec<LayoutInvar
     }
 
     match &layout.diagram {
-        // markdoc-mermaid: radar carries a title and no geometry of its own; its
+        // vendored: radar carries a title and no geometry of its own; its
         // nodes are checked with every other diagram's above.
         DiagramData::Radar(_) => {}
-        // markdoc-mermaid: the Cynefin field is fixed geometry; what is worth
+        // vendored: the Cynefin field is fixed geometry; what is worth
         // checking is that the measured text in it is sane.
         DiagramData::Cynefin(cynefin) => {
             check_rect(
@@ -266,7 +266,7 @@ pub fn validate_layout_invariants(layout: &Layout) -> Result<(), Vec<LayoutInvar
                 }
             }
         }
-        // markdoc-mermaid: a fishbone's bones are lines, and every end of
+        // vendored: a fishbone's bones are lines, and every end of
         // every one of them has to be a real number.
         DiagramData::Ishikawa(ishikawa) => {
             check_text_block(&mut errors, "ishikawa.problem", &ishikawa.problem);
@@ -285,7 +285,7 @@ pub fn validate_layout_invariants(layout: &Layout) -> Result<(), Vec<LayoutInvar
                 }
             }
         }
-        // markdoc-mermaid: a Venn diagram is circles; a radius has to be
+        // vendored: a Venn diagram is circles; a radius has to be
         // positive or the whole picture is empty.
         DiagramData::Venn(venn) => {
             for (idx, circle) in venn.circles.iter().enumerate() {
@@ -302,7 +302,7 @@ pub fn validate_layout_invariants(layout: &Layout) -> Result<(), Vec<LayoutInvar
                 check_text_block(&mut errors, &format!("{path}.label"), &label.label);
             }
         }
-        // markdoc-mermaid: a Wardley map's coordinates come from its source, so
+        // vendored: a Wardley map's coordinates come from its source, so
         // they are the one set here that an author can put anywhere.
         DiagramData::Wardley(wardley) => {
             check_rect(

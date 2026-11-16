@@ -33,7 +33,7 @@ pub enum DiagramKind {
     Radar,
     Treemap,
     XYChart,
-    // markdoc-mermaid: diagram types mermaid documents that upstream had no
+    // vendored: diagram types mermaid documents that upstream had no
     // parser for. Each is a graph of nodes, edges and groups, which is why
     // these four and not the other four: see VENDORED.md.
     Swimlane,
@@ -459,16 +459,16 @@ pub struct Graph {
     pub gantt_sections: Vec<String>,
     pub gantt_display_mode: Option<String>,
     pub journey_title: Option<String>,
-    // markdoc-mermaid: radar's `title` was parsed and dropped, and render_radar
+    // vendored: radar's `title` was parsed and dropped, and render_radar
     // emitted its title element with the text hardcoded empty.
     pub radar_title: Option<String>,
-    // markdoc-mermaid: a Wardley map's components and their coordinates.
+    // vendored: a Wardley map's components and their coordinates.
     pub wardley: WardleyData,
-    // markdoc-mermaid: a Cynefin framework diagram's five domains.
+    // vendored: a Cynefin framework diagram's five domains.
     pub cynefin: CynefinData,
-    // markdoc-mermaid: a Venn diagram's sets and the labels in their overlaps.
+    // vendored: a Venn diagram's sets and the labels in their overlaps.
     pub venn: VennData,
-    // markdoc-mermaid: an Ishikawa diagram's problem and its causes.
+    // vendored: an Ishikawa diagram's problem and its causes.
     pub ishikawa: IshikawaData,
     pub gitgraph: GitGraphData,
     pub class_defs: HashMap<String, NodeStyle>,
@@ -534,7 +534,7 @@ pub struct MindmapNode {
     pub children: Vec<String>,
 }
 
-/// markdoc-mermaid: an Ishikawa, or fishbone, diagram.
+/// vendored: an Ishikawa, or fishbone, diagram.
 ///
 /// The problem is the head, the categories are the bones off the spine, and
 /// indentation is the structure. A tree carries the same information, but the
@@ -560,7 +560,7 @@ pub struct IshikawaCause {
     pub depth: usize,
 }
 
-/// markdoc-mermaid: a Venn diagram.
+/// vendored: a Venn diagram.
 ///
 /// There is no node-and-edge reading of this one: a `union` is a label placed
 /// in the region where the sets it names overlap, so the overlaps have to be
@@ -586,7 +586,7 @@ pub struct VennUnion {
     pub label: String,
 }
 
-/// markdoc-mermaid: the five domains of a Cynefin diagram.
+/// vendored: the five domains of a Cynefin diagram.
 ///
 /// The names are fixed keywords and the positions never move: complex top
 /// left, complicated top right, chaotic bottom left, clear bottom right,
@@ -656,7 +656,7 @@ pub struct CynefinLink {
     pub label: Option<String>,
 }
 
-/// markdoc-mermaid: a Wardley map.
+/// vendored: a Wardley map.
 ///
 /// Mermaid writes a position as `[visibility, evolution]` -- visibility first,
 /// which its own documentation flags as "opposite of typical (x, y) notation".

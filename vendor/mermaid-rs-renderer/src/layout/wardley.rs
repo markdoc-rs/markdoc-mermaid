@@ -1,4 +1,4 @@
-//! markdoc-mermaid: a Wardley map's geometry.
+//! vendored: a Wardley map's geometry.
 //!
 //! A component's place on the map *is* what the diagram says, so this is the
 //! one kind here whose positions come from the source rather than from a

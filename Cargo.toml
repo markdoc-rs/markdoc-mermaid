@@ -1,6 +1,6 @@
 [package]
 name = "markdoc-mermaid"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 license = "MIT"
 description = "Mermaid diagrams for Markdoc, with node labels resolved from document anchors."
@@ -19,7 +19,7 @@ path = "src/lib.rs"
 # `cargo publish --manifest-path vendor/mermaid-rs-renderer/Cargo.toml`.
 # Its CLI and PNG stacks are not vendored at all, rather than switched off by
 # a feature: this crate wants SVG and nothing else.
-mermaid-rs-renderer = { package = "markdoc-mermaid-renderer", version = "0.3.1", path = "vendor/mermaid-rs-renderer" }
+mermaid-rs-renderer = { package = "markdoc-mermaid-renderer", version = "0.3.2", path = "vendor/mermaid-rs-renderer" }
 # `Serialize` for the flowchart graph (`Flowchart` and its parts), for a
 # page that ships it beside the SVG as JSON.
 serde = { version = "1", features = ["derive"], optional = true }

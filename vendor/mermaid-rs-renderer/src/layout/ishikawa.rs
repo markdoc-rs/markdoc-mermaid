@@ -1,4 +1,4 @@
-//! markdoc-mermaid: an Ishikawa, or fishbone, diagram.
+//! vendored: an Ishikawa, or fishbone, diagram.
 //!
 //! A spine running left to right into the problem at the head, and a bone per
 //! category angled back off it, alternating above and below so that the

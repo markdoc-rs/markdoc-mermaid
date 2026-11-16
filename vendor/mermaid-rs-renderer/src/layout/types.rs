@@ -460,9 +460,9 @@ pub enum DiagramData {
     XYChart(XYChartLayout),
     Timeline(TimelineLayout),
     Journey(JourneyLayout),
-    // markdoc-mermaid: carries radar's title, which had nowhere to travel.
+    // vendored: carries radar's title, which had nowhere to travel.
     Radar(RadarLayout),
-    // markdoc-mermaid: boxed -- a Wardley map's geometry is much the largest
+    // vendored: boxed -- a Wardley map's geometry is much the largest
     // of these variants, and every other diagram would carry its size.
     Wardley(Box<WardleyLayout>),
     Cynefin(Box<CynefinLayout>),
@@ -471,7 +471,7 @@ pub enum DiagramData {
     Error(ErrorLayout),
 }
 
-/// markdoc-mermaid: a fishbone's spine, head and bones.
+/// vendored: a fishbone's spine, head and bones.
 #[derive(Debug, Clone)]
 pub struct IshikawaLayout {
     pub problem: TextBlock,
@@ -505,7 +505,7 @@ pub struct IshikawaCauseLayout {
     pub sub: bool,
 }
 
-/// markdoc-mermaid: a Venn diagram's circles and the labels in their overlaps.
+/// vendored: a Venn diagram's circles and the labels in their overlaps.
 #[derive(Debug, Clone)]
 pub struct VennLayout {
     pub title: Option<TextBlock>,
@@ -534,7 +534,7 @@ pub struct VennLabelLayout {
     pub y: f32,
 }
 
-/// markdoc-mermaid: the Cynefin field, measured and placed.
+/// vendored: the Cynefin field, measured and placed.
 #[derive(Debug, Clone)]
 pub struct CynefinLayout {
     pub title: Option<TextBlock>,
@@ -573,7 +573,7 @@ pub struct CynefinLinkLayout {
     pub label: Option<TextBlock>,
 }
 
-/// markdoc-mermaid: a Wardley map, measured and placed.
+/// vendored: a Wardley map, measured and placed.
 #[derive(Debug, Clone)]
 pub struct WardleyLayout {
     pub title: Option<TextBlock>,
@@ -625,7 +625,7 @@ pub struct WardleyNoteLayout {
     pub y: f32,
 }
 
-/// markdoc-mermaid: what `render_radar` needs that the nodes do not carry.
+/// vendored: what `render_radar` needs that the nodes do not carry.
 #[derive(Debug, Clone, Default)]
 pub struct RadarLayout {
     pub title: Option<String>,

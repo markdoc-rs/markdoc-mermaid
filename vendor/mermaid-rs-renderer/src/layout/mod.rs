@@ -184,7 +184,7 @@ pub fn compute_layout_with_metrics(
         }
         crate::ir::DiagramKind::Quadrant => compute_quadrant_layout(graph, theme, config),
         crate::ir::DiagramKind::Gantt => compute_gantt_layout(graph, theme, config),
-        // markdoc-mermaid: event modelling is lanes of ordered steps, which is
+        // vendored: event modelling is lanes of ordered steps, which is
         // the column layout kanban already does.
         crate::ir::DiagramKind::Kanban | crate::ir::DiagramKind::EventModeling => {
             compute_kanban_layout(graph, theme, config, Some(&mut stage_metrics))
@@ -193,15 +193,15 @@ pub fn compute_layout_with_metrics(
         crate::ir::DiagramKind::Sankey => compute_sankey_layout(graph, theme, config),
         crate::ir::DiagramKind::Architecture => compute_architecture_layout(graph, theme, config),
         crate::ir::DiagramKind::Radar => compute_radar_layout(graph, theme, config),
-        // markdoc-mermaid: a Cynefin field's positions are fixed by the
+        // vendored: a Cynefin field's positions are fixed by the
         // framework itself.
         crate::ir::DiagramKind::Cynefin => cynefin::compute_cynefin_layout(graph, theme, config),
-        // markdoc-mermaid: a fishbone's spine and angled bones are the diagram.
+        // vendored: a fishbone's spine and angled bones are the diagram.
         crate::ir::DiagramKind::Ishikawa => ishikawa::compute_ishikawa_layout(graph, theme, config),
-        // markdoc-mermaid: a Venn diagram's overlaps have to be real geometry
+        // vendored: a Venn diagram's overlaps have to be real geometry
         // before a union's label has anywhere to sit.
         crate::ir::DiagramKind::Venn => venn::compute_venn_layout(graph, theme, config),
-        // markdoc-mermaid: a Wardley map's positions come from its source.
+        // vendored: a Wardley map's positions come from its source.
         crate::ir::DiagramKind::Wardley => wardley::compute_wardley_layout(graph, theme, config),
         crate::ir::DiagramKind::Treemap => {
             if config.treemap.render_mode == TreemapRenderMode::Error {
@@ -216,7 +216,7 @@ pub fn compute_layout_with_metrics(
         crate::ir::DiagramKind::XYChart => compute_xychart_layout(graph, theme, config),
         crate::ir::DiagramKind::Timeline => compute_timeline_layout(graph, theme, config),
         crate::ir::DiagramKind::Journey => compute_journey_layout(graph, theme, config),
-        // markdoc-mermaid: a swimlane is a flow through lanes, a use case
+        // vendored: a swimlane is a flow through lanes, a use case
         // diagram is actors joined to use cases inside a boundary, and a tree
         // view is a tree -- all of them nodes, edges and groups, which is what
         // this layout does.
@@ -2004,7 +2004,7 @@ flowchart RL
         );
     }
 
-    // markdoc-mermaid: the node positions this asserts on come from measured
+    // vendored: the node positions this asserts on come from measured
     // text, so whether E->F collapses to one straight segment depends on which
     // font the host resolved. It holds where DejaVu is the match and fails on a
     // host with a wider font set, which is the environment, not the layout.

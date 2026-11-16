@@ -44,7 +44,7 @@ pub(super) fn measure_label_with_max_width(
     wrap: bool,
     font_family: &str,
 ) -> TextBlock {
-    // markdoc-mermaid: Mermaid's `#…;` escapes are read here, on the way into
+    // vendored: Mermaid's `#…;` escapes are read here, on the way into
     // the block the renderer draws from, so that every diagram kind's text
     // gets them and the measured width is the width of what is drawn. Not in
     // the parser: an escape is there so a `"` or a `]` cannot end a label, so

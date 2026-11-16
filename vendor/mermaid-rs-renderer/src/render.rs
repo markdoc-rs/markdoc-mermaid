@@ -2638,7 +2638,7 @@ fn render_radar(layout: &Layout, theme: &Theme, _config: &LayoutConfig) -> Strin
         ));
     }
 
-    // markdoc-mermaid: upstream emitted this element with the text hardcoded
+    // vendored: upstream emitted this element with the text hardcoded
     // empty, so `title` was drawn as nothing at all.
     if let crate::layout::DiagramData::Radar(radar) = &layout.diagram
         && let Some(title) = radar.title.as_deref()
@@ -3337,7 +3337,7 @@ fn pie_slice_path(cx: f32, cy: f32, radius: f32, start_angle: f32, end_angle: f3
     )
 }
 
-// markdoc-mermaid: a Wardley map.
+// vendored: a Wardley map.
 //
 // Two axes, visibility up and evolution across, the evolution axis divided
 // into named stages. A component is a dot with its name beside it, an anchor
@@ -3499,18 +3499,18 @@ fn render_wardley(
     svg
 }
 
-// markdoc-mermaid: the Cynefin framework's five domains.
+// vendored: the Cynefin framework's five domains.
 //
 // The four quadrants in their fixed places, the confusion ellipse over the
 // middle of them, each domain's name in its corner and its items stacked
 // under it. Mermaid draws a wavy boundary between the ordered and unordered
 // halves; this draws a straight one, which is the one simplification here.
-// markdoc-mermaid: a Venn diagram.
+// vendored: a Venn diagram.
 //
 // Translucent circles so an overlap is visibly an overlap, each set named
 // outside its own circle, and every `union`'s label in the region its sets
 // share.
-// markdoc-mermaid: an Ishikawa, or fishbone, diagram.
+// vendored: an Ishikawa, or fishbone, diagram.
 //
 // The spine into the problem at the head, a bone per category angled back off
 // it, and each bone's causes along its own length.
@@ -6331,11 +6331,11 @@ fn escape_xml(input: &str) -> String {
         .replace('\'', "&apos;")
 }
 
-// markdoc-mermaid: a link's title is a label too, and reaches the picture
+// vendored: a link's title is a label too, and reaches the picture
 // without passing through `measure_label`, so it needs the same decoding. This
-// is the hover text of a `click` directive, and markdoc-mermaid's `expand`
-// writes the heading there escaped because the directive puts it inside
-// quotes, where a bare `"` would end it early.
+// is the hover text of a `click` directive, where a caller writing document
+// text escapes it too: the directive puts it inside quotes, and a bare `"`
+// would end it early.
 fn link_title(title: &str) -> String {
     // `<br/>` is Mermaid's line break, and `split_lines` turns it into one for
     // a drawn label. A `<title>` can hold a newline, so it gets the same

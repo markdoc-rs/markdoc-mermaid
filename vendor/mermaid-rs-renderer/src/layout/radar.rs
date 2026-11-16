@@ -44,7 +44,7 @@ pub(super) fn compute_radar_layout(graph: &Graph, theme: &Theme, config: &Layout
             style.stroke_width = Some(0.0);
         }
         let mut nl = build_node_layout(node, label, width, height, style, graph);
-        // markdoc-mermaid: kept inside the layout. `legend_base_x` is a fixed
+        // vendored: kept inside the layout. `legend_base_x` is a fixed
         // 593.75 of this 680-wide box, so a legend entry wider than 86 -- a
         // series label of about a dozen characters, which `benches/fixtures/
         // expanded/radar_tech.mmd` has -- used to reach past the right edge and

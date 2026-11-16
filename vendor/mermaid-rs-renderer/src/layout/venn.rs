@@ -1,4 +1,4 @@
-//! markdoc-mermaid: a Venn diagram's circles, and where a label sits in them.
+//! vendored: a Venn diagram's circles, and where a label sits in them.
 //!
 //! This is the one of the four with no node-and-edge reading at all. A `union`
 //! is a label placed in the region where the sets it names overlap and only

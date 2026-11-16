@@ -1,4 +1,4 @@
-//! markdoc-mermaid: the Cynefin framework's five domains.
+//! vendored: the Cynefin framework's five domains.
 //!
 //! An item's domain is the whole content of this diagram, and a domain's
 //! place never moves: complex top left, complicated top right, chaotic bottom

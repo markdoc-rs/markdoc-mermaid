@@ -1,4 +1,4 @@
-//! markdoc-mermaid: Mermaid's `#…;` escapes, decoded.
+//! vendored: Mermaid's `#…;` escapes, decoded.
 //!
 //! Mermaid lets a label carry a character that would otherwise end it, by
 //! writing it as `#` then a name or a number then `;`. Its own documentation
@@ -9,10 +9,10 @@
 //! Upstream read none of them. The only entity handling in this renderer was
 //! `escape_xml` on the way out, so a label that carried an escape drew the
 //! escape: a heading with a quotation mark in it came out as
-//! `He said #quot;no#quot;`. That mattered to markdoc-mermaid in particular,
-//! whose whole promise is that a node's text *is* the document's heading, and
-//! whose `expand` has to write `#quot;` for a `"` because a bare one would
-//! close the bracketed label it is being put inside.
+//! `He said #quot;no#quot;`. It matters most to a caller whose node text is
+//! taken from a document, because a `"` in that text has to be written
+//! `#quot;`: a bare one would close the bracketed label it is being put
+//! inside.
 //!
 //! # Where this runs
 //!

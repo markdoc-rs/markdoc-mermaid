@@ -39,7 +39,7 @@ static COMPACT_DOTTED_LABEL_ARROW_RE: Lazy<Regex> = Lazy::new(|| {
     )
     .unwrap()
 });
-// markdoc-mermaid: `ARROW` requires two of `-`/`=` where upstream wrote `[-=]+`
+// vendored: `ARROW` requires two of `-`/`=` where upstream wrote `[-=]+`
 // and so accepted one. See ARROW_TOKEN_RE below for why. The labelled forms are
 // left as upstream wrote them: `-. text .->` really does carry a single dash
 // before its dot, so the same floor cannot be applied to their halves.
@@ -51,7 +51,7 @@ static ARROW_RE: Lazy<Regex> = Lazy::new(|| {
     )
     .unwrap()
 });
-/// markdoc-mermaid: the characters between two endpoints of a flowchart edge.
+/// vendored: the characters between two endpoints of a flowchart edge.
 ///
 /// Upstream's core was `[-=]+`, which matches a lone `-`, and a lone `-` is not
 /// a link: every mermaid link carries at least two of `-` or `=` (`--`, `---`,
@@ -77,7 +77,7 @@ static ARROW_TOKEN_RE: Lazy<Regex> = Lazy::new(|| {
     .unwrap()
 });
 
-/// markdoc-mermaid: one link of a chain, labelled or not, as
+/// vendored: one link of a chain, labelled or not, as
 /// `split_labelled_chain` finds them left to right in the masked line.
 ///
 /// `text` is a labelled link as Mermaid's lexer reads one: an opening (`--`,
@@ -261,7 +261,7 @@ fn detect_diagram_kind(input: &str) -> Option<DiagramKind> {
         if starts_with_diagram_header(&lower, "xychart") {
             return Some(DiagramKind::XYChart);
         }
-        // markdoc-mermaid: before the flowchart, because `swimlane-beta LR`
+        // vendored: before the flowchart, because `swimlane-beta LR`
         // and the rest would otherwise fall through to it.
         if starts_with_diagram_header(&lower, "ishikawa") {
             return Some(DiagramKind::Ishikawa);
@@ -347,7 +347,7 @@ fn looks_like_flowchart_edge_syntax(line: &str) -> bool {
     ARROW_TOKEN_RE.is_match(&mask_bracket_content(line))
 }
 
-// markdoc-mermaid: the first meaningful line when it is a bare word, and so a
+// vendored: the first meaningful line when it is a bare word, and so a
 // diagram header this renderer has no parser for, rather than a diagram body.
 fn unknown_diagram_header(input: &str) -> Option<String> {
     let mut in_frontmatter = false;
@@ -4470,7 +4470,7 @@ fn parse_radar_diagram(input: &str) -> Result<ParseOutput> {
     Ok(ParseOutput { graph, init_config })
 }
 
-// markdoc-mermaid: mermaid names a radar axis and curve `id["Label"]`, or by a
+// vendored: mermaid names a radar axis and curve `id["Label"]`, or by a
 // bare id. Upstream ran `strip_quotes` over the whole token, which leaves the
 // brackets and the id in place, so `axis a["Alpha"]` drew an axis labelled
 // `a["Alpha"]`. The label is what a reader wants; the id is only how the curve's
@@ -5728,7 +5728,7 @@ fn split_on_ampersand(input: &str) -> Vec<&str> {
     parts
 }
 
-/// markdoc-mermaid: split a block diagram's node line on whitespace that is
+/// vendored: split a block diagram's node line on whitespace that is
 /// outside brackets, parentheses, braces and quotes.
 ///
 /// A block lists its nodes space-separated, and upstream split the line with
@@ -5772,7 +5772,7 @@ fn split_whitespace_outside_brackets(line: &str) -> Vec<&str> {
 
 fn split_edge_chain(line: &str) -> Option<Vec<String>> {
     let masked = mask_bracket_content(line);
-    // markdoc-mermaid: a chain with a labelled link in it is cut here, before
+    // vendored: a chain with a labelled link in it is cut here, before
     // the checks below give up on it (`split_labelled_chain`).
     if let Some(statements) = split_labelled_chain(line, &masked) {
         return Some(statements);
@@ -5830,7 +5830,7 @@ fn split_edge_chain(line: &str) -> Option<Vec<String>> {
     Some(statements)
 }
 
-/// markdoc-mermaid: a chain any of whose links carries a label, as one
+/// vendored: a chain any of whose links carries a label, as one
 /// statement per link, the way Mermaid reads it: `a -- Yes --> b -- No --> c`
 /// is `a -- Yes --> b` and `b -- No --> c`.
 ///
@@ -6569,7 +6569,7 @@ fn count_indent(line: &str) -> usize {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// markdoc-mermaid: four diagram types mermaid documents that this renderer
+// vendored: four diagram types mermaid documents that this renderer
 // had no parser for. Each one is a graph of nodes, edges and groups, so each
 // is laid out by the flowchart or the kanban layout rather than needing
 // geometry of its own, and drawn by the ordinary node-and-edge renderer --
@@ -7210,7 +7210,7 @@ A["foo & bar"] & B --> C"#;
         assert_eq!(parsed.graph.edges.len(), 1);
     }
 
-    /// markdoc-mermaid: a flowchart's edges as `(from, to, label)`, in order.
+    /// vendored: a flowchart's edges as `(from, to, label)`, in order.
     fn edge_triples(input: &str) -> Vec<(String, String, Option<String>)> {
         parse_mermaid(input)
             .unwrap()
@@ -7227,7 +7227,7 @@ A["foo & bar"] & B --> C"#;
 
     #[test]
     fn a_chain_with_a_labelled_link_is_one_edge_per_link() {
-        // markdoc-mermaid: `split_labelled_chain`. Upstream read each of these
+        // vendored: `split_labelled_chain`. Upstream read each of these
         // as one edge: the first labelled link, with the rest of the line as
         // its far end.
         let cases = [
@@ -7296,7 +7296,7 @@ A["foo & bar"] & B --> C"#;
 
     #[test]
     fn a_chain_keeps_the_style_of_each_link() {
-        // markdoc-mermaid: each link of a chain is read on its own, so each
+        // vendored: each link of a chain is read on its own, so each
         // keeps its own line and ends.
         use crate::ir::{EdgeDecoration, EdgeStyle};
         let parsed =
@@ -7325,7 +7325,7 @@ A["foo & bar"] & B --> C"#;
 
     #[test]
     fn a_line_with_one_link_or_no_label_is_read_as_before() {
-        // markdoc-mermaid: `split_labelled_chain` leaves these to upstream's
+        // vendored: `split_labelled_chain` leaves these to upstream's
         // reading. `a -- text -- b` closes on a bare `--`, which is not a link
         // there; upstream reads the line as one labelled edge, and still does.
         assert_eq!(

@@ -4,10 +4,10 @@
 
 [package]
 edition = "2024"
-# markdoc-mermaid: published to crates.io under its own name (see VENDORED.md);
+# vendored: published to crates.io under its own name (see VENDORED.md);
 # the library is still named `mermaid_rs_renderer` (`[lib]` below).
 name = "markdoc-mermaid-renderer"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["mermaid-rs-renderer contributors"]
 build = false
 autolib = false
@@ -15,7 +15,7 @@ autobins = false
 autoexamples = false
 autotests = false
 autobenches = false
-description = "mermaid-rs-renderer 0.3.1, a pure-Rust Mermaid renderer, with the diagram types and fixes markdoc-mermaid needs"
+description = "A pure-Rust Mermaid renderer: upstream mermaid-rs-renderer 0.3.1 with added diagram types and fixes (see VENDORED.md)"
 readme = "VENDORED.md"
 keywords = [
     "mermaid",
