@@ -113,6 +113,16 @@ fn dialect(kind: DiagramKind) -> Option<Dialect> {
             click: true,
             declare_all: false,
         }),
+        // A swimlane and a use case diagram have flowchart bodies, ids the
+        // author writes and all, so they take the flowchart's own form.
+        // TreeView and EventModeling do not appear here: both derive a node's
+        // id from its text, so there is no id for an author to write and
+        // nothing resolution could match.
+        DiagramKind::Swimlane | DiagramKind::UseCase => Some(Dialect {
+            declare: |id, label| format!("  {id}[\"{label}\"]\n"),
+            click: true,
+            declare_all: false,
+        }),
         DiagramKind::Block => Some(Dialect {
             declare: |id, label| format!("  {id}[\"{label}\"]\n"),
             click: false,

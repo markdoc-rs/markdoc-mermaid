@@ -125,6 +125,53 @@ with a `markdoc-mermaid:` comment saying why, so it is not mistaken for upstream
    `src/` is clean. `homepage` was dropped from `Cargo.toml` as redundant with
    `repository`.
 
+### Added
+
+10. **Four diagram types mermaid documents and upstream had no parser for**:
+    `swimlane-beta`, `usecase-beta`, `treeView-beta` and `eventmodeling`. Each is a graph
+    of nodes, edges and groups, so each needed a `DiagramKind` variant, a parser, and a
+    line in the layout dispatch — no geometry of its own, and no renderer arm, because the
+    ordinary node-and-edge renderer draws `DiagramData::Graph` and emits real `<text>`.
+
+    - `swimlane-beta [direction]` has a flowchart body whose `subgraph`s are the lanes, so
+      the header is rewritten and the body handed to `parse_flowchart`. Writing a second
+      parser for the same grammar would only let the two drift. Lanes are drawn as
+      `subgraph` boxes rather than full-width bands.
+    - `usecase-beta` is rewritten the same way: an actor keeps its own node token, a
+      `systemBoundary "…" … end` becomes a `subgraph`, and the edges are untouched.
+    - `treeView-beta` is indent-structured, so it is parsed directly into a tree of nodes
+      and parent-to-child edges. Mermaid draws it as an indented list with elbow
+      connectors; here it is a tree of boxes — the same hierarchy, a different picture.
+    - `eventmodeling`'s `tf <step> <lane> <name>` rows become a node per row grouped into a
+      subgraph per lane, in step order, which the kanban column layout draws.
+
+    The first two take anchor labels and `click` links, because their bodies are flowcharts
+    and the ids are the author's own. The other two derive a node's id from its own text, so
+    there is no id for an author to write and nothing for resolution to match; they are left
+    out of `expand::dialect` for that reason, not as an omission.
+
+### Still not drawn
+
+`cynefin-beta`, `ishikawa-beta`, `venn-beta` and `wardley-beta` remain unparsed, and each
+fails with `unsupported Mermaid diagram type: <header>`. They are not more parsing but more
+geometry, which is why they are not in change 10:
+
+- **cynefin** is a 2×2 field of named domains plus a fifth, central "confusion" region, and
+  an item's domain *is* its position. Drawn as boxes it would lose the only thing the
+  diagram says.
+- **ishikawa** is a fishbone: a horizontal spine with angled ribs whose sub-causes attach
+  along each rib. A tree carries the same structure but is not the diagram an author asking
+  for a fishbone wants.
+- **venn** is overlapping circles where every `union A,B["…"]` is a label placed in an
+  intersection. There is no node-and-edge reading of it at all.
+- **wardley** places each component at an explicit `[x, y]` on a value-chain axis with an
+  evolution scale, plus `evolve` markers and free `note` placement. The quadrant layout is
+  the nearest thing here and still has neither the axes nor the markers.
+
+Each would want a layout module of its own, on the scale of `src/layout/quadrant.rs` (146
+lines) for cynefin and wardley and more than that for venn and ishikawa. The honest answer
+for now is the error, which is what change 3 and change 4 make sure they get.
+
 ### Known, not fixed
 
 **Mermaid's `#...;` entity escapes are not decoded.** Nothing in `src/` reads `#quot;`,
@@ -138,7 +185,7 @@ one of the contained fixes above.
 
 ### Not a fix
 
-10. **One test is `#[ignore]`d**: `layout::tests::cycle_fixture_subgraph_entry_aligns_with_spine`.
+11. **One test is `#[ignore]`d**: `layout::tests::cycle_fixture_subgraph_entry_aligns_with_spine`.
    It asserts that one edge of `flowchart_cycles.mmd` collapses to a single straight
    segment, and the node positions it rests on come from measured text, so the answer
    depends on which font the host resolved. It passes where DejaVu is the match (a Debian

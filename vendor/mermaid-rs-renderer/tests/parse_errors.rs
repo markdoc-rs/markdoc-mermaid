@@ -351,16 +351,34 @@ fn sequence_unclosed_frame_is_reported() {
 /// Each one is a bare word ending in `-beta`, and the lone `-` in that suffix
 /// used to satisfy the flowchart-edge fallback in `detect_diagram_kind`, so
 /// each came back as a two-box flowchart named after its own header.
-const UNSUPPORTED_HEADERS: &[&str] = &[
-    "cynefin-beta",
-    "ishikawa-beta",
-    "swimlane-beta",
-    "treeView-beta",
-    "usecase-beta",
-    "venn-beta",
-    "wardley-beta",
-    "eventmodeling",
+const UNSUPPORTED_HEADERS: &[&str] =
+    &["cynefin-beta", "ishikawa-beta", "venn-beta", "wardley-beta"];
+
+/// The four that are parsed now, each of which is a graph of nodes, edges and
+/// groups. The lone `-` in their `-beta` suffix used to satisfy the flowchart
+/// fallback in `detect_diagram_kind`, so each came back as a two-box flowchart
+/// named after the halves of its own header.
+const ADDED_HEADERS: &[(&str, mermaid_rs_renderer::DiagramKind)] = &[
+    (
+        "swimlane-beta LR",
+        mermaid_rs_renderer::DiagramKind::Swimlane,
+    ),
+    ("usecase-beta", mermaid_rs_renderer::DiagramKind::UseCase),
+    ("treeView-beta", mermaid_rs_renderer::DiagramKind::TreeView),
+    (
+        "eventmodeling",
+        mermaid_rs_renderer::DiagramKind::EventModeling,
+    ),
 ];
+
+#[test]
+fn the_added_diagram_types_are_their_own_kind() {
+    for (header, kind) in ADDED_HEADERS {
+        let parsed = parse_mermaid_strict(&format!("{header}\n"))
+            .unwrap_or_else(|e| panic!("{header} should parse: {e:?}"));
+        assert_eq!(parsed.graph.kind, *kind, "{header}");
+    }
+}
 
 #[test]
 fn unsupported_diagram_header_is_an_error() {

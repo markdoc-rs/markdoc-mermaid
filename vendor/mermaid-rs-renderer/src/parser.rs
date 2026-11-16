@@ -116,6 +116,10 @@ pub fn parse_mermaid(input: &str) -> Result<ParseOutput> {
         DiagramKind::Radar => parse_radar_diagram(input),
         DiagramKind::Treemap => parse_treemap_diagram(input),
         DiagramKind::XYChart => parse_xy_chart_diagram(input),
+        DiagramKind::Swimlane => parse_swimlane_diagram(input),
+        DiagramKind::UseCase => parse_usecase_diagram(input),
+        DiagramKind::TreeView => parse_treeview_diagram(input),
+        DiagramKind::EventModeling => parse_eventmodeling_diagram(input),
         DiagramKind::Flowchart => parse_flowchart(input),
     }
 }
@@ -229,6 +233,20 @@ fn detect_diagram_kind(input: &str) -> Option<DiagramKind> {
         }
         if starts_with_diagram_header(&lower, "xychart") {
             return Some(DiagramKind::XYChart);
+        }
+        // markdoc-mermaid: before the flowchart, because `swimlane-beta LR`
+        // and the rest would otherwise fall through to it.
+        if starts_with_diagram_header(&lower, "swimlane") {
+            return Some(DiagramKind::Swimlane);
+        }
+        if starts_with_diagram_header(&lower, "usecase") {
+            return Some(DiagramKind::UseCase);
+        }
+        if starts_with_diagram_header(&lower, "treeview") {
+            return Some(DiagramKind::TreeView);
+        }
+        if starts_with_diagram_header(&lower, "eventmodeling") {
+            return Some(DiagramKind::EventModeling);
         }
         if starts_with_diagram_header(&lower, "flowchart")
             || starts_with_diagram_header(&lower, "graph")
@@ -5384,9 +5402,10 @@ fn add_node_to_subgraphs(graph: &mut Graph, subgraph_stack: &[usize], node_id: &
     // subgraph node sets overlap and their boxes are forced to overlap.
     // Membership in the current stack chain (ancestors) is fine: that is how
     // nested subgraphs are represented here.
-    let claimed_elsewhere = graph.subgraphs.iter().enumerate().any(|(idx, sub)| {
-        !subgraph_stack.contains(&idx) && sub.nodes.iter().any(|n| n == node_id)
-    });
+    let claimed_elsewhere =
+        graph.subgraphs.iter().enumerate().any(|(idx, sub)| {
+            !subgraph_stack.contains(&idx) && sub.nodes.iter().any(|n| n == node_id)
+        });
     if claimed_elsewhere {
         return;
     }
@@ -6445,6 +6464,221 @@ fn count_indent(line: &str) -> usize {
         }
     }
     count
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// markdoc-mermaid: four diagram types mermaid documents that this renderer
+// had no parser for. Each one is a graph of nodes, edges and groups, so each
+// is laid out by the flowchart or the kanban layout rather than needing
+// geometry of its own, and drawn by the ordinary node-and-edge renderer --
+// real `<text>`, as everything here is. See VENDORED.md for the four that
+// are not here and what each of them would need instead.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Replace the first non-empty line, the diagram header, with `header`.
+///
+/// Both the swimlane and the use case diagram have flowchart bodies, so the
+/// honest implementation is to hand the body to `parse_flowchart` rather than
+/// write a second parser for the same grammar and have the two drift.
+fn with_flowchart_header(input: &str, header: &str) -> String {
+    let mut out = String::with_capacity(input.len() + header.len());
+    let mut replaced = false;
+    for line in input.lines() {
+        if !replaced && !line.trim().is_empty() && !line.trim().starts_with("%%") {
+            out.push_str(header);
+            out.push('\n');
+            replaced = true;
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
+/// `swimlane-beta [direction]`, then a flowchart body whose `subgraph`s are
+/// the lanes.
+fn parse_swimlane_diagram(input: &str) -> Result<ParseOutput> {
+    let direction = first_meaningful_line(input)
+        .and_then(|line| {
+            line.split_whitespace()
+                .nth(1)
+                .map(|word| word.to_ascii_uppercase())
+        })
+        .filter(|word| matches!(word.as_str(), "TD" | "TB" | "LR" | "RL" | "BT"))
+        .unwrap_or_else(|| "LR".to_string());
+    let mut parsed = parse_flowchart(&with_flowchart_header(
+        input,
+        &format!("flowchart {direction}"),
+    ))?;
+    parsed.graph.kind = DiagramKind::Swimlane;
+    Ok(parsed)
+}
+
+/// `usecase-beta`, then `actor`/`service` declarations, `systemBoundary "…" …
+/// end` groups, and edges.
+///
+/// Rewritten into the flowchart it already is: an actor keeps its own node
+/// token, a boundary is a subgraph, and the edges are untouched.
+fn parse_usecase_diagram(input: &str) -> Result<ParseOutput> {
+    let mut body = String::with_capacity(input.len());
+    for line in input.lines() {
+        let trimmed = line.trim();
+        let lower = trimmed.to_ascii_lowercase();
+        if lower.starts_with("usecase") {
+            continue;
+        }
+        if let Some(rest) = lower
+            .strip_prefix("systemboundary")
+            .filter(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace))
+        {
+            let name = trimmed[trimmed.len() - rest.len()..].trim();
+            let name = strip_quotes(name);
+            // A subgraph needs an id that is not the title, or a title with a
+            // space in it becomes several tokens.
+            let id = sanitize_id(&name);
+            let id = if id.is_empty() { "boundary".into() } else { id };
+            body.push_str(&format!("  subgraph {id}[\"{name}\"]\n"));
+            continue;
+        }
+        // `actor Customer("Customer")` is the node `Customer("Customer")`.
+        let stripped = ["actor ", "service ", "usecase "]
+            .iter()
+            .find_map(|kw| trimmed.strip_prefix(*kw).map(str::trim));
+        body.push_str(&format!("  {}\n", stripped.unwrap_or(trimmed)));
+    }
+    let mut parsed = parse_flowchart(&format!("flowchart LR\n{body}"))?;
+    parsed.graph.kind = DiagramKind::UseCase;
+    Ok(parsed)
+}
+
+/// `treeView-beta`, then names at an indent, each a child of the nearest
+/// shallower one.
+///
+/// Mermaid draws this as an indented list with elbow connectors; here it is a
+/// tree of boxes, which is the same hierarchy drawn differently -- see the
+/// table in the README.
+fn parse_treeview_diagram(input: &str) -> Result<ParseOutput> {
+    let mut graph = Graph::new();
+    graph.kind = DiagramKind::TreeView;
+    graph.direction = Direction::LeftRight;
+    let (lines, init_config) = preprocess_input_keep_indent(input)?;
+
+    // (indent, id) of each open ancestor, shallowest first.
+    let mut stack: Vec<(usize, String)> = Vec::new();
+
+    for raw_line in lines {
+        let label = raw_line.trim();
+        if label.is_empty() || label.to_ascii_lowercase().starts_with("treeview") {
+            continue;
+        }
+        let indent = count_indent(&raw_line);
+        while stack.last().is_some_and(|(open, _)| *open >= indent) {
+            stack.pop();
+        }
+
+        let mut id = sanitize_id(label);
+        if id.is_empty() {
+            id = format!("tree_{}", graph.nodes.len());
+        }
+        while graph.nodes.contains_key(&id) {
+            id = format!("{id}_{}", graph.nodes.len());
+        }
+        graph.ensure_node(
+            &id,
+            Some(label.to_string()),
+            Some(crate::ir::NodeShape::RoundRect),
+        );
+
+        if let Some((_, parent)) = stack.last() {
+            graph.edges.push(crate::ir::Edge {
+                from: parent.clone(),
+                to: id.clone(),
+                label: None,
+                start_label: None,
+                end_label: None,
+                directed: true,
+                arrow_start: false,
+                arrow_end: true,
+                arrow_start_kind: None,
+                arrow_end_kind: None,
+                start_decoration: None,
+                end_decoration: None,
+                style: crate::ir::EdgeStyle::Solid,
+            });
+        }
+        stack.push((indent, id));
+    }
+
+    Ok(ParseOutput { graph, init_config })
+}
+
+/// `eventmodeling`, then `tf <step> <lane> <Name>` rows.
+///
+/// Each lane becomes a group and each row a node in it, in step order, which
+/// the kanban column layout draws.
+fn parse_eventmodeling_diagram(input: &str) -> Result<ParseOutput> {
+    let mut graph = Graph::new();
+    graph.kind = DiagramKind::EventModeling;
+    graph.direction = Direction::LeftRight;
+    let (lines, init_config) = preprocess_input_keep_indent(input)?;
+
+    // Lane id -> the nodes in it, in the order their steps were read.
+    let mut lanes: Vec<(String, Vec<String>)> = Vec::new();
+
+    for raw_line in lines {
+        let line = raw_line.trim();
+        if line.is_empty() || line.to_ascii_lowercase().starts_with("eventmodeling") {
+            continue;
+        }
+        let Some(rest) = line.strip_prefix("tf ").map(str::trim) else {
+            continue;
+        };
+        // `<step> <lane> <Name…>`: the step orders the row and the lane groups
+        // it, so both are needed and the rest is the name.
+        let mut parts = rest.splitn(3, char::is_whitespace);
+        let (Some(_step), Some(lane), Some(name)) = (parts.next(), parts.next(), parts.next())
+        else {
+            continue;
+        };
+        let name = strip_quotes(name.trim());
+        if lane.is_empty() || name.is_empty() {
+            continue;
+        }
+        let mut id = sanitize_id(&name);
+        if id.is_empty() {
+            id = format!("event_{}", graph.nodes.len());
+        }
+        while graph.nodes.contains_key(&id) {
+            id = format!("{id}_{}", graph.nodes.len());
+        }
+        graph.ensure_node(&id, Some(name), Some(crate::ir::NodeShape::Rectangle));
+
+        match lanes.iter_mut().find(|(known, _)| known == lane) {
+            Some((_, nodes)) => nodes.push(id),
+            None => lanes.push((lane.to_string(), vec![id])),
+        }
+    }
+
+    for (lane, nodes) in lanes {
+        graph.subgraphs.push(Subgraph {
+            id: Some(sanitize_id(&lane)),
+            label: lane,
+            nodes,
+            direction: None,
+            icon: None,
+        });
+    }
+
+    Ok(ParseOutput { graph, init_config })
+}
+
+/// The first line that is neither blank nor a `%%` comment.
+fn first_meaningful_line(input: &str) -> Option<&str> {
+    input
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty() && !line.starts_with("%%"))
 }
 
 #[cfg(test)]

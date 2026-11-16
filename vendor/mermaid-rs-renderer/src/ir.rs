@@ -33,6 +33,13 @@ pub enum DiagramKind {
     Radar,
     Treemap,
     XYChart,
+    // markdoc-mermaid: diagram types mermaid documents that upstream had no
+    // parser for. Each is a graph of nodes, edges and groups, which is why
+    // these four and not the other four: see VENDORED.md.
+    Swimlane,
+    UseCase,
+    TreeView,
+    EventModeling,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

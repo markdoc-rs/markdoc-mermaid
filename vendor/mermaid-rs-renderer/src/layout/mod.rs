@@ -180,7 +180,9 @@ pub fn compute_layout_with_metrics(
         }
         crate::ir::DiagramKind::Quadrant => compute_quadrant_layout(graph, theme, config),
         crate::ir::DiagramKind::Gantt => compute_gantt_layout(graph, theme, config),
-        crate::ir::DiagramKind::Kanban => {
+        // markdoc-mermaid: event modelling is lanes of ordered steps, which is
+        // the column layout kanban already does.
+        crate::ir::DiagramKind::Kanban | crate::ir::DiagramKind::EventModeling => {
             compute_kanban_layout(graph, theme, config, Some(&mut stage_metrics))
         }
         crate::ir::DiagramKind::Block => compute_block_layout(graph, theme, config),
@@ -200,7 +202,14 @@ pub fn compute_layout_with_metrics(
         crate::ir::DiagramKind::XYChart => compute_xychart_layout(graph, theme, config),
         crate::ir::DiagramKind::Timeline => compute_timeline_layout(graph, theme, config),
         crate::ir::DiagramKind::Journey => compute_journey_layout(graph, theme, config),
-        crate::ir::DiagramKind::Class
+        // markdoc-mermaid: a swimlane is a flow through lanes, a use case
+        // diagram is actors joined to use cases inside a boundary, and a tree
+        // view is a tree -- all of them nodes, edges and groups, which is what
+        // this layout does.
+        crate::ir::DiagramKind::Swimlane
+        | crate::ir::DiagramKind::UseCase
+        | crate::ir::DiagramKind::TreeView
+        | crate::ir::DiagramKind::Class
         | crate::ir::DiagramKind::State
         | crate::ir::DiagramKind::Er
         | crate::ir::DiagramKind::Requirement
