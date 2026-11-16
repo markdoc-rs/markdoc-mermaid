@@ -1,0 +1,69 @@
+# CI for markdoc-mermaid — https://github.com/markdoc-rs/markdoc-mermaid
+#
+# The gate itself is in `.github/scripts/check.sh`, not here, so release.yml
+# runs exactly the same set before it publishes anything. A second list of
+# steps drifts, and the half that drifts is always the one nobody watches.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: markdoc-mermaid
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: markdoc-mermaid
+
+      # fmt, clippy and the tests with and without `serde`, debug and
+      # release, and the doctests.
+      - name: check.sh
+        run: bash markdoc-mermaid/.github/scripts/check.sh markdoc-mermaid
+
+  # ────────────────────────────────────────────────────────────────────
+  # The crate ships no binary, so this is not about a platform's build:
+  # it is about the renderer underneath. The SVG is compared byte for byte
+  # in places, and a float or a hash that ordered differently per platform
+  # would show up here and nowhere else.
+  # ────────────────────────────────────────────────────────────────────
+  test:
+    name: test ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: markdoc-mermaid
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: markdoc-mermaid
+          key: test-${{ matrix.os }}
+
+      - name: cargo test
+        working-directory: markdoc-mermaid
+        run: cargo test --all-targets --features serde
+
+      # Release only: the renderer's layout validation panics in a debug
+      # build when edges name one subgraph by both its id and its title, so
+      # that test checks the SVG only here.
+      - name: cargo test --release
+        working-directory: markdoc-mermaid
+        run: cargo test --release --all-targets --features serde
