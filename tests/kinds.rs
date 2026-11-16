@@ -59,7 +59,14 @@ fn text_of(svg: &str) -> String {
             _ => {}
         }
     }
-    out.split_whitespace().collect::<Vec<_>>().join(" ")
+    let out = out.split_whitespace().collect::<Vec<_>>().join(" ");
+    // The renderer escapes its text for XML on the way out, so undo that much
+    // to be able to assert about a character that had to be escaped.
+    out.replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
 }
 
 fn diagram(src: &str) -> markdoc_mermaid::Diagram {
@@ -343,4 +350,113 @@ fn the_added_kinds_resolve_where_an_id_is_the_author_s_to_write() {
             );
         }
     }
+}
+
+#[test]
+fn a_heading_with_a_quotation_mark_in_it_draws_the_mark() {
+    // The bug this crate existed to prevent, in its own output. `expand` has
+    // to write a `"` as Mermaid's `#quot;`, because the heading is put inside
+    // a bracketed label and a bare one would close it early. Nothing in the
+    // renderer read that escape back, so the picture drew `#quot;` where the
+    // heading had a quotation mark -- the label was not the heading after all.
+    struct Quoted;
+    impl Anchors for Quoted {
+        fn get(&self, id: &str) -> Option<Anchor> {
+            (id == "step_one").then(|| Anchor {
+                label: "He said \"no\" & left".into(),
+                href: "#step_one".into(),
+            })
+        }
+    }
+    for (kind, src) in SOURCES.iter().filter(|(k, _)| RESOLVING.contains(k)) {
+        let d = render(src, &Quoted, &Options::default())
+            .unwrap_or_else(|e| panic!("{kind} should render: {e}"));
+        assert_eq!(d.resolved, ["step_one"], "{kind}");
+        let text = text_of(&d.svg);
+        assert!(
+            text.contains("He said \"no\" & left"),
+            "{kind}: the heading is not drawn as written: {text}"
+        );
+        for leak in ["#quot;", "#amp;"] {
+            assert!(
+                !d.svg.contains(leak),
+                "{kind}: {leak} reached the picture, in a label or a link title"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_literal_hash_in_a_heading_survives() {
+    // Only `#name;` and `#123;` are escapes. A heading about C# or an issue
+    // number has to come through as the author wrote it.
+    struct Hashes;
+    impl Anchors for Hashes {
+        fn get(&self, id: &str) -> Option<Anchor> {
+            (id == "step_one").then(|| Anchor {
+                label: "C# and issue #42 and #notanentity;".into(),
+                href: "#step_one".into(),
+            })
+        }
+    }
+    let d = render(
+        "flowchart TD\n  step_one --> step_two\n",
+        &Hashes,
+        &Options::default(),
+    )
+    .expect("should render");
+    let text = text_of(&d.svg);
+    assert!(
+        text.contains("C# and issue #42 and #notanentity;"),
+        "a literal hash did not survive: {text}"
+    );
+}
+
+#[test]
+fn mermaid_s_own_escapes_are_read_in_a_hand_written_label() {
+    // An author writing Mermaid by hand, rather than through resolution, gets
+    // the escapes too: these are the two examples in mermaid's own docs.
+    let d = render(
+        "flowchart TD\n  a[\"I #9829; you\"] --> b[\"#infin; times more\"]\n",
+        &Index,
+        &Options::default(),
+    )
+    .expect("should render");
+    let text = text_of(&d.svg);
+    assert!(text.contains("I \u{2665} you"), "got {text}");
+    assert!(text.contains("\u{221E} times more"), "got {text}");
+}
+
+#[test]
+fn a_heading_of_two_lines_is_drawn_on_two_lines() {
+    // `quote` writes a newline as Mermaid's `<br/>`, for the same reason it
+    // writes `#quot;`: the heading has to survive inside a bracketed label.
+    struct TwoLines;
+    impl Anchors for TwoLines {
+        fn get(&self, id: &str) -> Option<Anchor> {
+            (id == "step_one").then(|| Anchor {
+                label: "Line one\nLine two".into(),
+                href: "#step_one".into(),
+            })
+        }
+    }
+    let d = render(
+        "flowchart TD\n  step_one --> step_two\n",
+        &TwoLines,
+        &Options::default(),
+    )
+    .expect("should render");
+    let lines: Vec<&str> = d
+        .svg
+        .split("<tspan")
+        .skip(1)
+        .filter_map(|s| s.split("</tspan>").next())
+        .filter_map(|s| s.split_once('>').map(|(_, t)| t))
+        .collect();
+    assert!(
+        lines.contains(&"Line one") && lines.contains(&"Line two"),
+        "expected two lines, got {lines:?}"
+    );
+    // Not as the tag's own characters, in the label or the link's hover text.
+    assert!(!d.svg.contains("br/"), "a <br/> reached the picture");
 }

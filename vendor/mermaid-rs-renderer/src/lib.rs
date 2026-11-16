@@ -83,6 +83,9 @@
 //! CLI and the PNG stack are not part of this copy: a diagram in a document
 //! is drawn as SVG, so `<text>` stays selectable text in print.
 
+// markdoc-mermaid: Mermaid's `#…;` escapes, which upstream never read.
+pub mod entities;
+
 pub mod config;
 mod edge_geometry;
 pub mod error;

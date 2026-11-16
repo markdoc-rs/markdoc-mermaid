@@ -12,7 +12,8 @@ below. It was a crates.io dependency until markdoc-mermaid 0.3.0.
   `.gitignore`, `flake.nix`, `Cargo.toml` (the package's normalised manifest, changed for
   publishing as below) and `Cargo.toml.orig` (the repository's). Left out: `src/main.rs`,
   `src/cli.rs` and `tests/cli_suite.rs` (change 1), the package's `Cargo.lock`, and the
-  registry's bookkeeping files. Added: `docs/comparison_sources/` (change 2).
+  registry's bookkeeping files. Added: `docs/comparison_sources/` (change 2), and
+  `src/entities.rs`, which is not upstream's at all (change 11).
   mermaid-rs-renderer is MIT, as markdoc-mermaid is; `LICENSE` is kept unchanged, and the
   copyright in it is upstream's.
 - Published to crates.io as `markdoc-mermaid-renderer`, because the published
@@ -172,20 +173,43 @@ Each would want a layout module of its own, on the scale of `src/layout/quadrant
 lines) for cynefin and wardley and more than that for venn and ishikawa. The honest answer
 for now is the error, which is what change 3 and change 4 make sure they get.
 
-### Known, not fixed
+### Fixed since
 
-**Mermaid's `#...;` entity escapes are not decoded.** Nothing in `src/` reads `#quot;`,
-`#35;` or any other of them; the only entity handling is `escape_xml` on the way out. So a
-label carrying one shows it literally. markdoc-mermaid's `expand::quote` emits `#quot;` for
-a `"` in a heading, because a bare `"` would close a bracketed label early, which means a
-heading with a quotation mark in it is drawn with `#quot;` where the mark should be. It
-predates this vendoring and is left alone here: a decoder has to know not to touch a label
-that contains a literal `#`, and that is a change to every diagram kind at once rather than
-one of the contained fixes above.
+11. **Mermaid's `#…;` escapes are read** (`src/entities.rs`). Nothing in `src/` decoded
+    them; the only entity handling was `escape_xml` on the way out. Mermaid's own
+    documentation gives `#9829;` for a heart and `#infin;` for an infinity sign, and says
+    "numbers given are base 10, so `#` can be encoded as `#35;`. It is also supported to use
+    HTML character names."
+
+    This was the user-visible one. markdoc-mermaid's `expand::quote` has to write a `"` in a
+    heading as `#quot;`, because the heading is put inside a bracketed label and a bare
+    quotation mark would close it early — so a heading with a quotation mark in it drew
+    `#quot;` where the mark should be, and the label was not the heading after all, which is
+    the one thing that crate exists to guarantee.
+
+    Decoded at measurement, in `measure_label_with_max_width`, which is the single funnel
+    every diagram kind's text passes through on its way into the `TextBlock` the renderer
+    draws from. Deliberately *not* in the parser: the escape exists so a `"` or a `]` cannot
+    terminate a label, so it has to outlive the brackets around it. Decoding earlier would
+    reintroduce the problem the escape prevents. A link's `<title>` is decoded too
+    (`link_title`), since a `click` directive's hover text reaches the picture without being
+    measured, and `<br/>` is read there as the line break it is everywhere else.
+
+    Only `#`, then letters and digits, then `;` is an escape. A bare `#`, `#foo` with no
+    semicolon, and a name the table does not know are all left exactly as written, so a
+    heading about C# or issue #42 survives. A number XML cannot carry — `#1;` — is refused
+    for the same reason: a decoded control character would not be badly drawn, it would make
+    the SVG unparseable.
+
+    Upstream's named set is HTML's whole table, some two thousand entries, because Mermaid
+    hands the name to the browser. `NAMED` holds about a hundred: the characters that cannot
+    be written literally in a label, the punctuation a writer types, the symbols Mermaid's
+    examples use, and some Greek. A name outside it comes through as written rather than
+    vanishing, so the difference is visible rather than silent.
 
 ### Not a fix
 
-11. **One test is `#[ignore]`d**: `layout::tests::cycle_fixture_subgraph_entry_aligns_with_spine`.
+12. **One test is `#[ignore]`d**: `layout::tests::cycle_fixture_subgraph_entry_aligns_with_spine`.
    It asserts that one edge of `flowchart_cycles.mmd` collapses to a single straight
    segment, and the node positions it rests on come from measured text, so the answer
    depends on which font the host resolved. It passes where DejaVu is the match (a Debian

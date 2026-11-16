@@ -240,6 +240,14 @@ pub fn expand(
 /// A label goes inside `["…"]`, so a quote in it would close the label early.
 /// `#quot;` is Mermaid's own escape. A newline becomes `<br/>`, which is how
 /// Mermaid breaks a line inside a node.
+///
+/// Both are kept now that the renderer reads them back, and keeping them is
+/// not a leftover: the escape is the only way a quotation mark can travel
+/// inside a bracketed label at all, which is why Mermaid has it. What was
+/// missing was the other half -- until markdoc-mermaid 0.3.0 nothing decoded
+/// `#quot;`, so a heading with a quotation mark drew the escape instead of the
+/// mark, and the label was not the heading after all. The round trip is now
+/// the same one Mermaid itself does.
 fn quote(value: &str) -> String {
     value
         .replace('"', "#quot;")

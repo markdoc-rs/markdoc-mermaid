@@ -1388,7 +1388,7 @@ pub fn render_svg_with_dimensions(
             if let Some(link) = node.link.as_ref() {
                 svg.push_str(&format!("<a {}>", link_attrs(link)));
                 if let Some(title) = link.title.as_deref() {
-                    svg.push_str(&format!("<title>{}</title>", escape_xml(title)));
+                    svg.push_str(&format!("<title>{}</title>", link_title(title)));
                 }
             }
             if layout.kind == crate::ir::DiagramKind::Er {
@@ -1482,7 +1482,7 @@ pub fn render_svg_with_dimensions(
             if let Some(link) = footbox.link.as_ref() {
                 svg.push_str(&format!("<a {}>", link_attrs(link)));
                 if let Some(title) = link.title.as_deref() {
-                    svg.push_str(&format!("<title>{}</title>", escape_xml(title)));
+                    svg.push_str(&format!("<title>{}</title>", link_title(title)));
                 }
             }
             svg.push_str(&shape_svg(footbox, theme, config));
@@ -1533,7 +1533,7 @@ pub fn render_svg_with_dimensions(
             if let Some(link) = node.link.as_ref() {
                 svg.push_str(&format!("<a {}>", link_attrs(link)));
                 if let Some(title) = link.title.as_deref() {
-                    svg.push_str(&format!("<title>{}</title>", escape_xml(title)));
+                    svg.push_str(&format!("<title>{}</title>", link_title(title)));
                 }
             }
             svg.push_str(&format!(
@@ -1569,7 +1569,7 @@ pub fn render_svg_with_dimensions(
             if let Some(link) = footbox.link.as_ref() {
                 svg.push_str(&format!("<a {}>", link_attrs(link)));
                 if let Some(title) = link.title.as_deref() {
-                    svg.push_str(&format!("<title>{}</title>", escape_xml(title)));
+                    svg.push_str(&format!("<title>{}</title>", link_title(title)));
                 }
             }
             svg.push_str(&format!(
@@ -5823,6 +5823,21 @@ fn escape_xml(input: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
+}
+
+// markdoc-mermaid: a link's title is a label too, and reaches the picture
+// without passing through `measure_label`, so it needs the same decoding. This
+// is the hover text of a `click` directive, and markdoc-mermaid's `expand`
+// writes the heading there escaped because the directive puts it inside
+// quotes, where a bare `"` would end it early.
+fn link_title(title: &str) -> String {
+    // `<br/>` is Mermaid's line break, and `split_lines` turns it into one for
+    // a drawn label. A `<title>` can hold a newline, so it gets the same
+    // reading rather than the tag's own characters.
+    let title = crate::entities::decode(title)
+        .replace("<br/>", "\n")
+        .replace("<br>", "\n");
+    escape_xml(&title)
 }
 
 fn link_attrs(link: &crate::ir::NodeLink) -> String {
