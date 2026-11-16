@@ -11,9 +11,15 @@ name = "markdoc_mermaid"
 path = "src/lib.rs"
 
 [dependencies]
-# `default-features = false` drops its CLI (clap) and PNG (resvg/usvg)
-# stacks. This crate wants SVG and nothing else.
-mermaid-rs-renderer = { version = "0.3.1", default-features = false }
+# Vendored: mermaid-rs-renderer 0.3.1 with the diagram types and fixes listed
+# in vendor/mermaid-rs-renderer/VENDORED.md. A published crate's dependencies
+# come from crates.io (packaging drops `path`, and `[patch]` does not travel),
+# so the fork is published there as `markdoc-mermaid-renderer` and named
+# `mermaid-rs-renderer` here. Publish it first:
+# `cargo publish --manifest-path vendor/mermaid-rs-renderer/Cargo.toml`.
+# Its CLI and PNG stacks are not vendored at all, rather than switched off by
+# a feature: this crate wants SVG and nothing else.
+mermaid-rs-renderer = { package = "markdoc-mermaid-renderer", version = "0.3.1", path = "vendor/mermaid-rs-renderer" }
 # `Serialize` for the flowchart graph (`Flowchart` and its parts), for a
 # page that ships it beside the SVG as JSON.
 serde = { version = "1", features = ["derive"], optional = true }

@@ -126,6 +126,14 @@ jobs:
       # No `--locked`, unlike the sibling repositories: this crate does not
       # commit Cargo.lock (.gitignore), so there is none in the checkout and
       # `--locked` would refuse to resolve one.
+      #
+      # The vendored renderer is published separately as
+      # `markdoc-mermaid-renderer` (see the note on the dependency in
+      # Cargo.toml, and vendor/mermaid-rs-renderer/VENDORED.md): packaging
+      # drops `path`, so that version has to be on crates.io before the
+      # release that depends on it, and this publish fails if it is not.
+      # It is a manual step, as it is in the markdoc repository:
+      # `cargo publish --manifest-path vendor/mermaid-rs-renderer/Cargo.toml`.
       - name: Publish to crates.io
         if: steps.crates-io.outputs.published == 'false'
         working-directory: markdoc-mermaid

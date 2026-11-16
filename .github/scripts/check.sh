@@ -37,6 +37,29 @@ step() {
 
 step "cargo fmt" cargo fmt --check
 
+# The vendored renderer is a path dependency, not a workspace member, so no
+# step here reaches it: this crate's fmt, clippy and tests are about its own
+# code. Its suite is the regression net for every change made to it
+# (vendor/mermaid-rs-renderer/VENDORED.md), so it gets its own steps. No
+# `cargo fmt` over it -- the published source is not rustfmt-clean in files
+# nothing here has touched.
+VENDORED=vendor/mermaid-rs-renderer/Cargo.toml
+
+vendored_renderer_tests() {
+  [ -f "$VENDORED" ] || return 1
+  cargo test --manifest-path "$VENDORED"
+}
+vendored_renderer_clippy() {
+  [ -f "$VENDORED" ] || return 1
+  if [ "$STRICT" = "1" ]; then
+    cargo clippy --manifest-path "$VENDORED" --all-targets -- -D warnings
+  else
+    cargo clippy --manifest-path "$VENDORED" --all-targets
+  fi
+}
+step "the vendored renderer: clippy" vendored_renderer_clippy
+step "the vendored renderer: tests" vendored_renderer_tests
+
 # `serde` is optional and derives on the graph types, so it is its own
 # compile: a derive that stops building is invisible to the default build.
 if [ "$STRICT" = "1" ]; then
