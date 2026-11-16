@@ -8,6 +8,7 @@ mod gantt;
 mod geometry;
 mod gitgraph;
 mod invariants;
+mod ishikawa;
 mod journey;
 mod kanban;
 pub(crate) mod label_placement;
@@ -24,6 +25,7 @@ mod text;
 mod timeline;
 mod treemap;
 pub(crate) mod types;
+mod venn;
 mod wardley;
 mod xychart;
 use architecture::*;
@@ -194,6 +196,11 @@ pub fn compute_layout_with_metrics(
         // markdoc-mermaid: a Cynefin field's positions are fixed by the
         // framework itself.
         crate::ir::DiagramKind::Cynefin => cynefin::compute_cynefin_layout(graph, theme, config),
+        // markdoc-mermaid: a fishbone's spine and angled bones are the diagram.
+        crate::ir::DiagramKind::Ishikawa => ishikawa::compute_ishikawa_layout(graph, theme, config),
+        // markdoc-mermaid: a Venn diagram's overlaps have to be real geometry
+        // before a union's label has anywhere to sit.
+        crate::ir::DiagramKind::Venn => venn::compute_venn_layout(graph, theme, config),
         // markdoc-mermaid: a Wardley map's positions come from its source.
         crate::ir::DiagramKind::Wardley => wardley::compute_wardley_layout(graph, theme, config),
         crate::ir::DiagramKind::Treemap => {

@@ -466,7 +466,72 @@ pub enum DiagramData {
     // of these variants, and every other diagram would carry its size.
     Wardley(Box<WardleyLayout>),
     Cynefin(Box<CynefinLayout>),
+    Venn(Box<VennLayout>),
+    Ishikawa(Box<IshikawaLayout>),
     Error(ErrorLayout),
+}
+
+/// markdoc-mermaid: a fishbone's spine, head and bones.
+#[derive(Debug, Clone)]
+pub struct IshikawaLayout {
+    pub problem: TextBlock,
+    pub problem_x: f32,
+    pub problem_y: f32,
+    pub spine_x: f32,
+    pub spine_y: f32,
+    pub spine_end_x: f32,
+    pub bones: Vec<IshikawaBoneLayout>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IshikawaBoneLayout {
+    pub name: TextBlock,
+    /// Where the bone meets the spine.
+    pub attach_x: f32,
+    pub attach_y: f32,
+    /// Its far end, back and out from the spine.
+    pub tip_x: f32,
+    pub tip_y: f32,
+    pub above: bool,
+    pub causes: Vec<IshikawaCauseLayout>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IshikawaCauseLayout {
+    pub label: TextBlock,
+    pub x: f32,
+    pub y: f32,
+    /// A cause of a cause, drawn smaller and further in.
+    pub sub: bool,
+}
+
+/// markdoc-mermaid: a Venn diagram's circles and the labels in their overlaps.
+#[derive(Debug, Clone)]
+pub struct VennLayout {
+    pub title: Option<TextBlock>,
+    pub title_x: f32,
+    pub title_y: f32,
+    pub circles: Vec<VennCircleLayout>,
+    pub labels: Vec<VennLabelLayout>,
+}
+
+#[derive(Debug, Clone)]
+pub struct VennCircleLayout {
+    pub label: TextBlock,
+    pub cx: f32,
+    pub cy: f32,
+    pub r: f32,
+    /// Where the set's own name goes, outside its circle.
+    pub label_x: f32,
+    pub label_y: f32,
+}
+
+/// A `union`'s label, placed in the region its sets share.
+#[derive(Debug, Clone)]
+pub struct VennLabelLayout {
+    pub label: TextBlock,
+    pub x: f32,
+    pub y: f32,
 }
 
 /// markdoc-mermaid: the Cynefin field, measured and placed.

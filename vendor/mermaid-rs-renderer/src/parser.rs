@@ -116,6 +116,8 @@ pub fn parse_mermaid(input: &str) -> Result<ParseOutput> {
         DiagramKind::Radar => parse_radar_diagram(input),
         DiagramKind::Treemap => parse_treemap_diagram(input),
         DiagramKind::XYChart => parse_xy_chart_diagram(input),
+        DiagramKind::Ishikawa => parse_ishikawa_diagram(input),
+        DiagramKind::Venn => parse_venn_diagram(input),
         DiagramKind::Cynefin => parse_cynefin_diagram(input),
         DiagramKind::Wardley => parse_wardley_diagram(input),
         DiagramKind::Swimlane => parse_swimlane_diagram(input),
@@ -238,6 +240,12 @@ fn detect_diagram_kind(input: &str) -> Option<DiagramKind> {
         }
         // markdoc-mermaid: before the flowchart, because `swimlane-beta LR`
         // and the rest would otherwise fall through to it.
+        if starts_with_diagram_header(&lower, "ishikawa") {
+            return Some(DiagramKind::Ishikawa);
+        }
+        if starts_with_diagram_header(&lower, "venn") {
+            return Some(DiagramKind::Venn);
+        }
         if starts_with_diagram_header(&lower, "cynefin") {
             return Some(DiagramKind::Cynefin);
         }
@@ -6679,6 +6687,128 @@ fn parse_eventmodeling_diagram(input: &str) -> Result<ParseOutput> {
     }
 
     Ok(ParseOutput { graph, init_config })
+}
+
+/// `ishikawa-beta`, then the problem, then its causes by indentation.
+///
+/// Mermaid's rule, in its own words: "the first line is the event (problem) of
+/// the diagram. Subsequent lines are causes of the event. Fishbone structure
+/// is indicated by indentation." So the shallowest lines after the problem are
+/// the categories -- the bones off the spine -- and anything under one of
+/// those is a cause on that bone, however deep it goes.
+fn parse_ishikawa_diagram(input: &str) -> Result<ParseOutput> {
+    let mut graph = Graph::new();
+    graph.kind = DiagramKind::Ishikawa;
+    graph.direction = Direction::LeftRight;
+    let (lines, init_config) = preprocess_input_keep_indent(input)?;
+
+    // The indent of the first line after the problem: whatever it is, that is
+    // the level the categories live at, since a document may indent by any
+    // amount.
+    let mut category_indent: Option<usize> = None;
+
+    for raw_line in lines {
+        let text = raw_line.trim();
+        if text.is_empty() || text.to_ascii_lowercase().starts_with("ishikawa") {
+            continue;
+        }
+        if graph.ishikawa.problem.is_none() {
+            graph.ishikawa.problem = Some(strip_quotes(text));
+            continue;
+        }
+        let indent = count_indent(&raw_line);
+        let base = *category_indent.get_or_insert(indent);
+        if indent <= base {
+            graph.ishikawa.categories.push(crate::ir::IshikawaCategory {
+                name: strip_quotes(text),
+                causes: Vec::new(),
+            });
+            continue;
+        }
+        // Deeper than a category: a cause on the bone most recently opened.
+        // Depth counts from the first level below the category, so a cause of
+        // a cause is drawn further in.
+        let Some(category) = graph.ishikawa.categories.last_mut() else {
+            // A cause before any category has no bone to sit on, and the
+            // problem is already taken.
+            continue;
+        };
+        let depth = indent.saturating_sub(base).saturating_sub(1) / 2;
+        category.causes.push(crate::ir::IshikawaCause {
+            text: strip_quotes(text),
+            depth,
+        });
+    }
+
+    Ok(ParseOutput { graph, init_config })
+}
+
+/// `venn-beta`, then `set` declarations and `union`s over them.
+///
+/// A set may carry a display label, `set A["Alpha"]`, so the id stays short.
+/// A union names two or more sets and labels the region they share.
+fn parse_venn_diagram(input: &str) -> Result<ParseOutput> {
+    let mut graph = Graph::new();
+    graph.kind = DiagramKind::Venn;
+    graph.direction = Direction::LeftRight;
+    let (lines, init_config) = preprocess_input(input)?;
+
+    for raw_line in lines {
+        let line = raw_line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line.to_ascii_lowercase().starts_with("venn") {
+            continue;
+        }
+        if let Some(rest) = keyword_rest(line, "title") {
+            graph.venn.title = Some(strip_quotes(rest));
+            continue;
+        }
+        if let Some(rest) = keyword_rest(line, "set") {
+            let (id, label) = split_bracket_label(rest);
+            if !id.is_empty() {
+                graph.venn.sets.push(crate::ir::VennSet {
+                    label: label.unwrap_or_else(|| id.clone()),
+                    id,
+                });
+            }
+            continue;
+        }
+        if let Some(rest) = keyword_rest(line, "union") {
+            let (names, label) = split_bracket_label(rest);
+            let sets: Vec<String> = names
+                .split(',')
+                .map(|name| strip_quotes(name.trim()))
+                .filter(|name| !name.is_empty())
+                .collect();
+            // A union without a label has no reason to exist: the region it
+            // names is already drawn by the circles that make it.
+            if let Some(label) = label.filter(|l| !l.is_empty())
+                && sets.len() >= 2
+            {
+                graph.venn.unions.push(crate::ir::VennUnion { sets, label });
+            }
+            continue;
+        }
+    }
+
+    Ok(ParseOutput { graph, init_config })
+}
+
+/// `name["Label"]` split into the part before the bracket and the label.
+fn split_bracket_label(input: &str) -> (String, Option<String>) {
+    let input = input.trim();
+    if let Some(open) = input.find('[')
+        && let Some(close) = input.rfind(']')
+        && close > open
+    {
+        return (
+            strip_quotes(input[..open].trim()),
+            Some(strip_quotes(input[open + 1..close].trim())),
+        );
+    }
+    (strip_quotes(input), None)
 }
 
 /// `cynefin-beta`, then a domain keyword per block with its items under it.

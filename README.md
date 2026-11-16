@@ -50,7 +50,7 @@ hand wins; a `click` they wrote themselves is not duplicated.
 
 The renderer is vendored (`vendor/mermaid-rs-renderer`), so this table is what
 this crate actually does rather than what Mermaid documents. Mermaid's own
-syntax reference lists 31 diagram types; 29 of them draw here.
+syntax reference lists 31 diagram types; all 31 draw here.
 
 **Anchor labels** is the feature above: an id resolved to the heading it names.
 It needs a declaration form the diagram's own grammar accepts, and most
@@ -96,29 +96,33 @@ diagram is emitted exactly as the renderer drew it.
 | `gantt` | yes |  |  |  |
 | `pie` | yes |  |  |  |
 | `cynefin-beta` | yes |  |  |  |
-| `ishikawa-beta` | **no** |  |  |  |
-| `venn-beta` | **no** |  |  |  |
+| `ishikawa-beta` | yes |  |  |  |
+| `venn-beta` | yes |  |  |  |
 | `wardley-beta` | yes |  |  |  |
 
-The four at the bottom have no parser here and fail with
-`unsupported Mermaid diagram type: <header>`. Each needs geometry of its own —
-a 2x2 domain field, a fishbone spine, circle intersections, an evolution axis —
-and drawn as boxes and arrows each would lose the only thing it says. That is
-the line between them and `swimlane-beta`, `usecase-beta`, `treeView-beta` and
-`eventmodeling`, which markdoc-mermaid 0.3.0 added: those four are nodes, edges
-and groups, which the existing layouts already draw.
-`vendor/mermaid-rs-renderer/VENDORED.md` says what each of the remaining four
-would need.
+Every diagram type mermaid's syntax reference documents is drawn. Four of them
+— `swimlane-beta`, `usecase-beta`, `treeView-beta` and `eventmodeling` — are
+graphs of nodes, edges and groups, and reuse the layouts that already draw
+those. Four more — `cynefin-beta`, `ishikawa-beta`, `venn-beta` and
+`wardley-beta` — needed geometry of their own, because position *is* what they
+say: a domain field, a fishbone's spine and bones, overlapping circles, a
+value chain against an evolution axis. Each has its own layout module.
 
-Before 0.3.0 none of the eight worked, and seven of them failed silently: a
-lone `-` read as a link, so each `*-beta` header drew a two-box flowchart named
-after the halves of itself. Only `eventmodeling`, which has no hyphen, said so.
-See change 3 in `VENDORED.md`.
+A header this renderer has no parser for — a typo, or a diagram type newer
+than this crate — fails with `unsupported Mermaid diagram type: <header>`.
+Before markdoc-mermaid 0.3.0 a word ending in `-beta` instead drew a two-box
+flowchart named after the halves of itself, because the lone `-` in it read as
+a link, which is the worse answer of the two: see change 3 in
+`vendor/mermaid-rs-renderer/VENDORED.md`.
 
-Two caveats on the four that were added. A `treeView` is drawn as a tree of
-boxes, where mermaid draws an indented list with elbow connectors — the same
-hierarchy, a different picture. A swimlane's lanes are `subgraph` boxes rather
-than full-width bands.
+Four places where the drawing is honestly simpler than mermaid's own, all of
+them noted here rather than in the table: a `treeView` is a tree of boxes
+where mermaid draws an indented list with elbow connectors; a swimlane's lanes
+are `subgraph` boxes rather than full-width bands; a `cynefin` field has a
+straight boundary between its halves where mermaid draws a wavy one; and a
+`venn` of four or more sets places its circles on a ring, which draws every
+set but cannot realise every intersection — no arrangement of circles can,
+which is why four-set Venn diagrams are normally drawn with ellipses.
 
 Everything *within* a supported type is untouched — edge labels, subgraphs,
 directions, shapes, styling — because none of it passes through this crate.

@@ -266,6 +266,42 @@ pub fn validate_layout_invariants(layout: &Layout) -> Result<(), Vec<LayoutInvar
                 }
             }
         }
+        // markdoc-mermaid: a fishbone's bones are lines, and every end of
+        // every one of them has to be a real number.
+        DiagramData::Ishikawa(ishikawa) => {
+            check_text_block(&mut errors, "ishikawa.problem", &ishikawa.problem);
+            check_finite(&mut errors, "ishikawa.spine_y", ishikawa.spine_y);
+            for (idx, bone) in ishikawa.bones.iter().enumerate() {
+                let path = format!("ishikawa.bones[{idx}]");
+                check_finite(&mut errors, &format!("{path}.attach_x"), bone.attach_x);
+                check_finite(&mut errors, &format!("{path}.tip_x"), bone.tip_x);
+                check_finite(&mut errors, &format!("{path}.tip_y"), bone.tip_y);
+                check_text_block(&mut errors, &format!("{path}.name"), &bone.name);
+                for (cause_idx, cause) in bone.causes.iter().enumerate() {
+                    let path = format!("{path}.causes[{cause_idx}]");
+                    check_finite(&mut errors, &format!("{path}.x"), cause.x);
+                    check_finite(&mut errors, &format!("{path}.y"), cause.y);
+                    check_text_block(&mut errors, &format!("{path}.label"), &cause.label);
+                }
+            }
+        }
+        // markdoc-mermaid: a Venn diagram is circles; a radius has to be
+        // positive or the whole picture is empty.
+        DiagramData::Venn(venn) => {
+            for (idx, circle) in venn.circles.iter().enumerate() {
+                let path = format!("venn.circles[{idx}]");
+                check_finite(&mut errors, &format!("{path}.cx"), circle.cx);
+                check_finite(&mut errors, &format!("{path}.cy"), circle.cy);
+                check_finite_positive(&mut errors, &format!("{path}.r"), circle.r);
+                check_text_block(&mut errors, &format!("{path}.label"), &circle.label);
+            }
+            for (idx, label) in venn.labels.iter().enumerate() {
+                let path = format!("venn.labels[{idx}]");
+                check_finite(&mut errors, &format!("{path}.x"), label.x);
+                check_finite(&mut errors, &format!("{path}.y"), label.y);
+                check_text_block(&mut errors, &format!("{path}.label"), &label.label);
+            }
+        }
         // markdoc-mermaid: a Wardley map's coordinates come from its source, so
         // they are the one set here that an author can put anywhere.
         DiagramData::Wardley(wardley) => {

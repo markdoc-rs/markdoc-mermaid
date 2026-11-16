@@ -42,6 +42,8 @@ pub enum DiagramKind {
     EventModeling,
     Wardley,
     Cynefin,
+    Venn,
+    Ishikawa,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -464,6 +466,10 @@ pub struct Graph {
     pub wardley: WardleyData,
     // markdoc-mermaid: a Cynefin framework diagram's five domains.
     pub cynefin: CynefinData,
+    // markdoc-mermaid: a Venn diagram's sets and the labels in their overlaps.
+    pub venn: VennData,
+    // markdoc-mermaid: an Ishikawa diagram's problem and its causes.
+    pub ishikawa: IshikawaData,
     pub gitgraph: GitGraphData,
     pub class_defs: HashMap<String, NodeStyle>,
     pub node_classes: HashMap<String, Vec<String>>,
@@ -526,6 +532,58 @@ pub struct MindmapNode {
     pub icon: Option<String>,
     pub class: Option<String>,
     pub children: Vec<String>,
+}
+
+/// markdoc-mermaid: an Ishikawa, or fishbone, diagram.
+///
+/// The problem is the head, the categories are the bones off the spine, and
+/// indentation is the structure. A tree carries the same information, but the
+/// spine and its angled ribs are what an author asking for a fishbone wants,
+/// so this has a layout of its own.
+#[derive(Debug, Clone, Default)]
+pub struct IshikawaData {
+    /// The first line: the event the causes are causes of.
+    pub problem: Option<String>,
+    pub categories: Vec<IshikawaCategory>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IshikawaCategory {
+    pub name: String,
+    pub causes: Vec<IshikawaCause>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IshikawaCause {
+    pub text: String,
+    /// 0 for a cause of the category, 1 and up for a cause of a cause.
+    pub depth: usize,
+}
+
+/// markdoc-mermaid: a Venn diagram.
+///
+/// There is no node-and-edge reading of this one: a `union` is a label placed
+/// in the region where the sets it names overlap, so the overlaps have to be
+/// real geometry before the label has anywhere to go.
+#[derive(Debug, Clone, Default)]
+pub struct VennData {
+    pub title: Option<String>,
+    pub sets: Vec<VennSet>,
+    pub unions: Vec<VennUnion>,
+}
+
+#[derive(Debug, Clone)]
+pub struct VennSet {
+    pub id: String,
+    /// The display label from `set A["Alpha"]`, or the id.
+    pub label: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct VennUnion {
+    /// The set ids this union names, in source order.
+    pub sets: Vec<String>,
+    pub label: String,
 }
 
 /// markdoc-mermaid: the five domains of a Cynefin diagram.
@@ -720,6 +778,8 @@ impl Graph {
             radar_title: None,
             wardley: WardleyData::default(),
             cynefin: CynefinData::default(),
+            venn: VennData::default(),
+            ishikawa: IshikawaData::default(),
             gitgraph: GitGraphData::default(),
             class_defs: HashMap::new(),
             node_classes: HashMap::new(),

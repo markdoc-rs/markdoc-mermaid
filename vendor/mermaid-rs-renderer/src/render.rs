@@ -415,6 +415,18 @@ pub fn render_svg_with_dimensions(
         return svg;
     }
 
+    if let DiagramData::Ishikawa(ref ishikawa) = layout.diagram {
+        svg.push_str(&render_ishikawa(ishikawa, theme, config));
+        svg.push_str("</svg>");
+        return svg;
+    }
+
+    if let DiagramData::Venn(ref venn) = layout.diagram {
+        svg.push_str(&render_venn(venn, theme, config));
+        svg.push_str("</svg>");
+        return svg;
+    }
+
     if let DiagramData::Cynefin(ref cynefin) = layout.diagram {
         svg.push_str(&render_cynefin(cynefin, theme, config));
         svg.push_str("</svg>");
@@ -3493,6 +3505,175 @@ fn render_wardley(
 // middle of them, each domain's name in its corner and its items stacked
 // under it. Mermaid draws a wavy boundary between the ordered and unordered
 // halves; this draws a straight one, which is the one simplification here.
+// markdoc-mermaid: a Venn diagram.
+//
+// Translucent circles so an overlap is visibly an overlap, each set named
+// outside its own circle, and every `union`'s label in the region its sets
+// share.
+// markdoc-mermaid: an Ishikawa, or fishbone, diagram.
+//
+// The spine into the problem at the head, a bone per category angled back off
+// it, and each bone's causes along its own length.
+fn render_ishikawa(
+    ishikawa: &crate::layout::IshikawaLayout,
+    theme: &Theme,
+    _config: &LayoutConfig,
+) -> String {
+    const BONE: &str = "#555555";
+    const INK: &str = "#333333";
+    const HEAD_FILL: &str = "#ECECFF";
+
+    let font = normalize_font_family(&theme.font_family);
+    let mut svg = String::new();
+
+    let text = |x: f32, y: f32, anchor: &str, size: f32, weight: &str, block: &TextBlock| {
+        let mut out = String::new();
+        for (idx, line) in block.lines.iter().enumerate() {
+            out.push_str(&format!(
+                "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"{}\" dominant-baseline=\"middle\" font-family=\"{}\" font-size=\"{}\" font-weight=\"{}\" fill=\"{}\">{}</text>",
+                x,
+                y + idx as f32 * (size + 2.0),
+                anchor,
+                font,
+                size,
+                weight,
+                INK,
+                escape_xml(line)
+            ));
+        }
+        out
+    };
+
+    // The spine, running into the head.
+    svg.push_str(&format!(
+        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"2.5\"/>",
+        ishikawa.spine_x, ishikawa.spine_y, ishikawa.spine_end_x, ishikawa.spine_y, BONE
+    ));
+
+    for bone in &ishikawa.bones {
+        svg.push_str(&format!(
+            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"2\"/>",
+            bone.attach_x, bone.attach_y, bone.tip_x, bone.tip_y, BONE
+        ));
+        // The category names itself just beyond its own tip, clear of the
+        // bone and of its causes.
+        let name_y = if bone.above {
+            bone.tip_y - bone.name.height / 2.0 - 4.0
+        } else {
+            bone.tip_y + bone.name.height / 2.0 + 4.0
+        };
+        svg.push_str(&text(
+            bone.tip_x,
+            name_y,
+            "middle",
+            theme.font_size,
+            "600",
+            &bone.name,
+        ));
+        for cause in &bone.causes {
+            svg.push_str(&text(
+                cause.x,
+                cause.y,
+                "start",
+                theme.font_size - if cause.sub { 2.0 } else { 1.0 },
+                "400",
+                &cause.label,
+            ));
+        }
+    }
+
+    // The head last, so the spine runs under it rather than through its text.
+    let pad_x = 12.0;
+    let pad_y = 8.0;
+    let w = ishikawa.problem.width + pad_x * 2.0;
+    let h = ishikawa.problem.height + pad_y * 2.0;
+    svg.push_str(&format!(
+        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"4\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
+        ishikawa.problem_x,
+        ishikawa.problem_y - h / 2.0,
+        w,
+        h,
+        HEAD_FILL,
+        BONE
+    ));
+    svg.push_str(&text(
+        ishikawa.problem_x + w / 2.0,
+        ishikawa.problem_y - ishikawa.problem.height / 2.0 + ishikawa.problem.height / 2.0,
+        "middle",
+        theme.font_size,
+        "600",
+        &ishikawa.problem,
+    ));
+
+    svg
+}
+
+fn render_venn(venn: &crate::layout::VennLayout, theme: &Theme, _config: &LayoutConfig) -> String {
+    const INK: &str = "#333333";
+    // Enough hues to tell any sensible number of sets apart.
+    const HUES: [i32; 6] = [220, 20, 140, 280, 50, 180];
+
+    let font = normalize_font_family(&theme.font_family);
+    let mut svg = String::new();
+
+    let text = |x: f32, y: f32, size: f32, weight: &str, block: &TextBlock| {
+        let mut out = String::new();
+        for (idx, line) in block.lines.iter().enumerate() {
+            out.push_str(&format!(
+                "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"{}\" font-size=\"{}\" font-weight=\"{}\" fill=\"{}\">{}</text>",
+                x,
+                y + idx as f32 * (size + 2.0),
+                font,
+                size,
+                weight,
+                INK,
+                escape_xml(line)
+            ));
+        }
+        out
+    };
+
+    if let Some(title) = &venn.title {
+        svg.push_str(&text(
+            venn.title_x,
+            venn.title_y + title.height / 2.0,
+            theme.font_size + 2.0,
+            "600",
+            title,
+        ));
+    }
+
+    // `multiply` is what makes two overlapping fills read as a third colour,
+    // which is the whole point of drawing the sets as circles.
+    for (idx, circle) in venn.circles.iter().enumerate() {
+        let hue = HUES[idx % HUES.len()];
+        svg.push_str(&format!(
+            "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"hsl({}, 70%, 70%)\" fill-opacity=\"0.42\" stroke=\"hsl({}, 55%, 45%)\" stroke-width=\"1.5\" style=\"mix-blend-mode:multiply\"/>",
+            circle.cx, circle.cy, circle.r, hue, hue
+        ));
+    }
+    for circle in &venn.circles {
+        svg.push_str(&text(
+            circle.label_x,
+            circle.label_y,
+            theme.font_size,
+            "600",
+            &circle.label,
+        ));
+    }
+    for label in &venn.labels {
+        svg.push_str(&text(
+            label.x,
+            label.y,
+            theme.font_size - 1.0,
+            "400",
+            &label.label,
+        ));
+    }
+
+    svg
+}
+
 fn render_cynefin(
     cynefin: &crate::layout::CynefinLayout,
     theme: &Theme,

@@ -13,7 +13,8 @@ below. It was a crates.io dependency until markdoc-mermaid 0.3.0.
   publishing as below) and `Cargo.toml.orig` (the repository's). Left out: `src/main.rs`,
   `src/cli.rs` and `tests/cli_suite.rs` (change 1), the package's `Cargo.lock`, and the
   registry's bookkeeping files. Added: `docs/comparison_sources/` (change 2), and
-  `src/entities.rs`, which is not upstream's at all (change 11).
+  and the files that are not upstream's at all: `src/entities.rs` (change 11) and
+  `src/layout/{wardley,cynefin,venn,ishikawa}.rs` (change 12).
   mermaid-rs-renderer is MIT, as markdoc-mermaid is; `LICENSE` is kept unchanged, and the
   copyright in it is upstream's.
 - Published to crates.io as `markdoc-mermaid-renderer`, because the published
@@ -151,28 +152,6 @@ with a `markdoc-mermaid:` comment saying why, so it is not mistaken for upstream
     there is no id for an author to write and nothing for resolution to match; they are left
     out of `expand::dialect` for that reason, not as an omission.
 
-### Still not drawn
-
-`cynefin-beta`, `ishikawa-beta`, `venn-beta` and `wardley-beta` remain unparsed, and each
-fails with `unsupported Mermaid diagram type: <header>`. They are not more parsing but more
-geometry, which is why they are not in change 10:
-
-- **cynefin** is a 2×2 field of named domains plus a fifth, central "confusion" region, and
-  an item's domain *is* its position. Drawn as boxes it would lose the only thing the
-  diagram says.
-- **ishikawa** is a fishbone: a horizontal spine with angled ribs whose sub-causes attach
-  along each rib. A tree carries the same structure but is not the diagram an author asking
-  for a fishbone wants.
-- **venn** is overlapping circles where every `union A,B["…"]` is a label placed in an
-  intersection. There is no node-and-edge reading of it at all.
-- **wardley** places each component at an explicit `[x, y]` on a value-chain axis with an
-  evolution scale, plus `evolve` markers and free `note` placement. The quadrant layout is
-  the nearest thing here and still has neither the axes nor the markers.
-
-Each would want a layout module of its own, on the scale of `src/layout/quadrant.rs` (146
-lines) for cynefin and wardley and more than that for venn and ishikawa. The honest answer
-for now is the error, which is what change 3 and change 4 make sure they get.
-
 ### Fixed since
 
 11. **Mermaid's `#…;` escapes are read** (`src/entities.rs`). Nothing in `src/` decoded
@@ -207,9 +186,55 @@ for now is the error, which is what change 3 and change 4 make sure they get.
     examples use, and some Greek. A name outside it comes through as written rather than
     vanishing, so the difference is visible rather than silent.
 
+### Also added
+
+12. **The four diagram types that needed geometry rather than parsing**:
+    `wardley-beta`, `cynefin-beta`, `venn-beta` and `ishikawa-beta`. These are the ones
+    where position *is* the content, so each has a layout module of its own, its own
+    `DiagramData` variant (boxed — their geometry is much the largest of those variants, and
+    every other diagram would otherwise carry the size), its own render arm and its own arm
+    in `validate_layout_invariants`. All of them draw real `<text>`.
+
+    - **wardley** (`src/layout/wardley.rs`) places each component at the coordinates it
+      declares: visibility up the left, evolution across the bottom in named stages. A
+      position is written `[visibility, evolution]` — visibility first, which mermaid's own
+      documentation flags as "opposite of typical (x, y) notation", so a test pins a corner
+      against getting it backwards, which would otherwise draw a perfectly plausible map
+      with every component in the wrong place. An `anchor` is hollow, a link is a line, and
+      `evolve` is a dashed arrow to where a component is headed. Not read: `size [w, h]`,
+      and the per-component `label [dx, dy]` offset.
+    - **cynefin** (`src/layout/cynefin.rs`) has no freedom at all: complex top left,
+      complicated top right, chaotic bottom left, clear bottom right, confusion in the
+      middle, fixed by the framework. The centre is a small ellipse, so it shows three items
+      and counts the rest as upstream's `+N more`. An item written before any domain keyword
+      is dropped rather than guessed at, its domain being the one thing the diagram says.
+    - **venn** (`src/layout/venn.rs`) is the one with no node-and-edge reading at all: a
+      `union` is a label in the region its sets share, so the circles have to be arranged
+      before the label has anywhere to go. One, two and three sets get the arrangements that
+      produce every region. A union of every set sits in the middle; one of only some is
+      pushed out of the middle into the lens those share, which a plain centroid would not
+      do — it would stack the two labels and the diagram would say nothing.
+    - **ishikawa** (`src/layout/ishikawa.rs`) is a spine into the problem at the head with a
+      bone per category angled back off it, alternating above and below. Mermaid's rule is
+      that the first line is the problem and indentation is the structure, so the shallowest
+      lines after it are the categories and anything deeper is a cause on the bone most
+      recently opened, drawn further in the deeper it goes.
+
+    Four places where the drawing is honestly simpler than mermaid's own: a `cynefin`
+    boundary between the ordered and unordered halves is straight where mermaid's is wavy; a
+    `venn` of four or more sets puts its circles on a ring, which draws every set but cannot
+    realise every intersection, as no arrangement of circles can; and the two noted under
+    change 10 for `treeView` and swimlane lanes.
+
+    None of the four is in `expand::dialect`. A Wardley component, a Cynefin item and an
+    Ishikawa cause are free text rather than identifiers — a name may hold spaces, as
+    `component Cup of Tea` does — so there is no id for an author to write an anchor against.
+    A Venn set does have an id, but nothing in the diagram is a node carrying a label: the
+    id names a circle, and the labels sit in the overlaps between them.
+
 ### Not a fix
 
-12. **One test is `#[ignore]`d**: `layout::tests::cycle_fixture_subgraph_entry_aligns_with_spine`.
+13. **One test is `#[ignore]`d**: `layout::tests::cycle_fixture_subgraph_entry_aligns_with_spine`.
    It asserts that one edge of `flowchart_cycles.mmd` collapses to a single straight
    segment, and the node positions it rests on come from measured text, so the answer
    depends on which font the host resolved. It passes where DejaVu is the match (a Debian

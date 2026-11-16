@@ -165,11 +165,11 @@ fn nodes_and_edge_ends_are_named_beyond_the_flowchart() {
 
 #[test]
 fn an_unsupported_diagram_type_is_an_error_naming_itself() {
-    // These four have no parser here; the other four mermaid documents do
-    // now (`the_added_kinds_*` below). All of them used to draw a two-box
-    // flowchart named after the halves of their own header, because a lone
-    // `-` read as a link.
-    for header in ["ishikawa-beta", "venn-beta"] {
+    // Every diagram type mermaid documents is drawn now, so this holds the
+    // mechanism rather than a list: a word ending in `-beta` used to come back
+    // a two-box flowchart named after the halves of itself, because the lone
+    // `-` in it read as a link.
+    for header in ["notadiagram-beta", "sillywalk", "flowchartish-beta"] {
         let err = render(
             &format!("{header}\n  title Something\n"),
             &Index,
@@ -465,6 +465,36 @@ fn a_heading_of_two_lines_is_drawn_on_two_lines() {
 /// is what the diagram says rather than something to be computed.
 const GEOMETRY: &[(&str, &str, &[&str])] = &[
     (
+        "ishikawa",
+        "ishikawa-beta\n    Blurry Photo\n    Process\n        Out of focus\n        Shutter speed too slow\n    User\n        Shaky hands\n    Equipment\n        LENS\n            Dirty lens\n    Environment\n        Too dark\n",
+        &[
+            "Blurry Photo",
+            "Process",
+            "User",
+            "Equipment",
+            "Environment",
+            "Out of focus",
+            "Shaky hands",
+            "LENS",
+            "Dirty lens",
+            "Too dark",
+        ],
+    ),
+    (
+        "venn",
+        "venn-beta\n  title What makes a good feature\n  set Desirable\n  set Feasible\n  set Viable\n  union Desirable,Feasible[\"Buildable\"]\n  union Feasible,Viable[\"Sustainable\"]\n  union Desirable,Viable[\"Marketable\"]\n  union Desirable,Feasible,Viable[\"Ship it\"]\n",
+        &[
+            "What makes a good feature",
+            "Desirable",
+            "Feasible",
+            "Viable",
+            "Buildable",
+            "Sustainable",
+            "Marketable",
+            "Ship it",
+        ],
+    ),
+    (
         "cynefin",
         "cynefin-beta\ntitle Our Situation\n\ncomplex\n\"Probe first\"\n\ncomplicated\n\"Expert analysis needed\"\n\nclear\n\"Known procedure\"\n\nchaotic\n\"Crisis response\"\n\nconfusion\n\"One\"\n\"Two\"\n\"Three\"\n\"Four\"\n\ncomplex --> complicated : \"Pattern identified\"\n",
         &[
@@ -555,5 +585,71 @@ fn a_wardley_position_is_visibility_then_evolution() {
     assert!(
         cy < 220.0,
         "visibility 0.95 should be near the top, got cy {cy}"
+    );
+}
+
+#[test]
+fn a_venn_union_sits_in_the_region_its_sets_share() {
+    // A union of every set belongs in the middle; a union of only some belongs
+    // out in the lens those share and the others do not. Placing both at the
+    // plain centroid would stack them, and the diagram would say nothing.
+    let d = render(
+        "venn-beta\nset A\nset B\nset C\nunion A,B[\"pair\"]\nunion A,B,C[\"all\"]\n",
+        &Index,
+        &Options::default(),
+    )
+    .expect("should render");
+
+    let attr = |hay: &str, name: &str| -> f32 {
+        hay.split_once(&format!("{name}=\""))
+            .and_then(|(_, rest)| rest.split_once('"'))
+            .and_then(|(value, _)| value.parse().ok())
+            .unwrap_or_else(|| panic!("no {name} in {hay}"))
+    };
+    // The three circles, in the order the sets were declared.
+    let centres: Vec<(f32, f32)> = d
+        .svg
+        .split("<circle")
+        .skip(1)
+        .map(|c| (attr(c, "cx"), attr(c, "cy")))
+        .collect();
+    assert_eq!(centres.len(), 3, "three sets should be three circles");
+
+    let label_at = |needle: &str| -> (f32, f32) {
+        let before = d
+            .svg
+            .split_once(&format!(">{needle}<"))
+            .unwrap_or_else(|| panic!("{needle} is not drawn"))
+            .0;
+        let tag = before.rfind("<text").expect("a text element");
+        (attr(&before[tag..], "x"), attr(&before[tag..], "y"))
+    };
+    let all = label_at("all");
+    let pair = label_at("pair");
+    let far = |p: (f32, f32), q: (f32, f32)| ((p.0 - q.0).powi(2) + (p.1 - q.1).powi(2)).sqrt();
+
+    assert!(
+        far(all, pair) > 40.0,
+        "the pairwise and all-three labels are in the same place"
+    );
+    // The A,B lens is the part of A and B that C does not reach, so the label
+    // has to be nearer both of their centres than C's.
+    let (a, b, c) = (centres[0], centres[1], centres[2]);
+    assert!(
+        far(pair, a) < far(pair, c) && far(pair, b) < far(pair, c),
+        "the A,B label is not in the A,B lens: {:.0} from A, {:.0} from B, {:.0} from C",
+        far(pair, a),
+        far(pair, b),
+        far(pair, c)
+    );
+    // The all-three label belongs where every circle reaches: the middle.
+    let spread = [a, b, c].map(|centre| far(all, centre));
+    let (lo, hi) = (
+        spread.iter().cloned().fold(f32::MAX, f32::min),
+        spread.iter().cloned().fold(0.0, f32::max),
+    );
+    assert!(
+        hi - lo < 1.0,
+        "the all-three label should be equidistant from the three centres, got {spread:?}"
     );
 }

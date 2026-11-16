@@ -351,7 +351,11 @@ fn sequence_unclosed_frame_is_reported() {
 /// Each one is a bare word ending in `-beta`, and the lone `-` in that suffix
 /// used to satisfy the flowchart-edge fallback in `detect_diagram_kind`, so
 /// each came back as a two-box flowchart named after its own header.
-const UNSUPPORTED_HEADERS: &[&str] = &["ishikawa-beta", "venn-beta"];
+/// Headers no renderer has, to hold the mechanism rather than a list: every
+/// diagram type mermaid documents is drawn now, and a `*-beta` word used to
+/// come back a two-box flowchart named after the halves of itself because the
+/// lone `-` in it satisfied the flowchart fallback in `detect_diagram_kind`.
+const UNSUPPORTED_HEADERS: &[&str] = &["notadiagram-beta", "sillywalk", "flowchartish-beta"];
 
 /// The four that are parsed now, each of which is a graph of nodes, edges and
 /// groups. The lone `-` in their `-beta` suffix used to satisfy the flowchart
@@ -431,6 +435,14 @@ fn a_lone_hyphen_does_not_make_a_flowchart() {
 #[test]
 fn the_geometry_kinds_satisfy_the_layout_invariants() {
     let cases: &[(&str, &str)] = &[
+        (
+            "ishikawa",
+            "ishikawa-beta\n    Blurry Photo\n    Process\n        Out of focus\n    Equipment\n        LENS\n            Dirty lens\n",
+        ),
+        (
+            "venn",
+            "venn-beta\ntitle T\nset A[\"Alpha\"]\nset B\nset C\nunion A,B[\"ab\"]\nunion A,B,C[\"abc\"]\n",
+        ),
         (
             "cynefin",
             "cynefin-beta\ntitle T\ncomplex\n\"a\"\nconfusion\n\"b\"\n\"c\"\n\"d\"\n\"e\"\ncomplex --> clear : \"x\"\n",
