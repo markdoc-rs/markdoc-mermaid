@@ -116,6 +116,7 @@ pub fn parse_mermaid(input: &str) -> Result<ParseOutput> {
         DiagramKind::Radar => parse_radar_diagram(input),
         DiagramKind::Treemap => parse_treemap_diagram(input),
         DiagramKind::XYChart => parse_xy_chart_diagram(input),
+        DiagramKind::Cynefin => parse_cynefin_diagram(input),
         DiagramKind::Wardley => parse_wardley_diagram(input),
         DiagramKind::Swimlane => parse_swimlane_diagram(input),
         DiagramKind::UseCase => parse_usecase_diagram(input),
@@ -237,6 +238,9 @@ fn detect_diagram_kind(input: &str) -> Option<DiagramKind> {
         }
         // markdoc-mermaid: before the flowchart, because `swimlane-beta LR`
         // and the rest would otherwise fall through to it.
+        if starts_with_diagram_header(&lower, "cynefin") {
+            return Some(DiagramKind::Cynefin);
+        }
         if starts_with_diagram_header(&lower, "wardley") {
             return Some(DiagramKind::Wardley);
         }
@@ -6675,6 +6679,75 @@ fn parse_eventmodeling_diagram(input: &str) -> Result<ParseOutput> {
     }
 
     Ok(ParseOutput { graph, init_config })
+}
+
+/// `cynefin-beta`, then a domain keyword per block with its items under it.
+///
+/// Only the five keywords are domains, and their places on the field never
+/// move, so the parser's whole job is to say which domain each item is in --
+/// which is the only thing this diagram says about it.
+fn parse_cynefin_diagram(input: &str) -> Result<ParseOutput> {
+    let mut graph = Graph::new();
+    graph.kind = DiagramKind::Cynefin;
+    graph.direction = Direction::TopDown;
+    let (lines, init_config) = preprocess_input(input)?;
+    let mut current: Option<crate::ir::CynefinDomain> = None;
+
+    for raw_line in lines {
+        let line = raw_line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let lower = line.to_ascii_lowercase();
+        if lower.starts_with("cynefin") {
+            continue;
+        }
+        if let Some(rest) = keyword_rest(line, "title") {
+            graph.cynefin.title = Some(strip_quotes(rest));
+            continue;
+        }
+        // An edge joins two domains: `complex --> complicated : "label"`.
+        if (line.contains("--") || line.contains("->"))
+            && let Some(link) = parse_cynefin_link(line)
+        {
+            graph.cynefin.links.push(link);
+            continue;
+        }
+        // A domain keyword on a line of its own opens a block.
+        if let Some(domain) = crate::ir::CynefinDomain::from_keyword(line) {
+            current = Some(domain);
+            continue;
+        }
+        // Anything else is an item in the block that is open. One before any
+        // domain has no domain to be in, so it is dropped rather than guessed
+        // at -- which domain it is in is the entire content of this diagram.
+        if let Some(domain) = current {
+            let item = strip_quotes(line);
+            if !item.is_empty() {
+                graph.cynefin.items[domain.index()].push(item);
+            }
+        }
+    }
+
+    Ok(ParseOutput { graph, init_config })
+}
+
+/// `complex --> complicated : "Pattern identified"`.
+fn parse_cynefin_link(line: &str) -> Option<crate::ir::CynefinLink> {
+    // The label is after the last `:` that is outside the arrow itself.
+    let (joined, label) = match line.split_once(" : ") {
+        Some((joined, label)) => (joined, Some(strip_quotes(label.trim()))),
+        None => (line, None),
+    };
+    let masked = mask_bracket_content(joined);
+    let arrow = ARROW_TOKEN_RE.find(&masked)?;
+    let from = crate::ir::CynefinDomain::from_keyword(joined[..arrow.start()].trim())?;
+    let to = crate::ir::CynefinDomain::from_keyword(joined[arrow.end()..].trim())?;
+    Some(crate::ir::CynefinLink {
+        from,
+        to,
+        label: label.filter(|l| !l.is_empty()),
+    })
 }
 
 /// `wardley-beta`, then components at explicit coordinates.

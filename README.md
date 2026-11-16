@@ -50,7 +50,7 @@ hand wins; a `click` they wrote themselves is not duplicated.
 
 The renderer is vendored (`vendor/mermaid-rs-renderer`), so this table is what
 this crate actually does rather than what Mermaid documents. Mermaid's own
-syntax reference lists 31 diagram types; 28 of them draw here.
+syntax reference lists 31 diagram types; 29 of them draw here.
 
 **Anchor labels** is the feature above: an id resolved to the heading it names.
 It needs a declaration form the diagram's own grammar accepts, and most
@@ -95,7 +95,7 @@ diagram is emitted exactly as the renderer drew it.
 | `xychart-beta` | yes |  |  |  |
 | `gantt` | yes |  |  |  |
 | `pie` | yes |  |  |  |
-| `cynefin-beta` | **no** |  |  |  |
+| `cynefin-beta` | yes |  |  |  |
 | `ishikawa-beta` | **no** |  |  |  |
 | `venn-beta` | **no** |  |  |  |
 | `wardley-beta` | yes |  |  |  |

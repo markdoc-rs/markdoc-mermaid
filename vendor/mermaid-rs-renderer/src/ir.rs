@@ -41,6 +41,7 @@ pub enum DiagramKind {
     TreeView,
     EventModeling,
     Wardley,
+    Cynefin,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -461,6 +462,8 @@ pub struct Graph {
     pub radar_title: Option<String>,
     // markdoc-mermaid: a Wardley map's components and their coordinates.
     pub wardley: WardleyData,
+    // markdoc-mermaid: a Cynefin framework diagram's five domains.
+    pub cynefin: CynefinData,
     pub gitgraph: GitGraphData,
     pub class_defs: HashMap<String, NodeStyle>,
     pub node_classes: HashMap<String, Vec<String>>,
@@ -523,6 +526,76 @@ pub struct MindmapNode {
     pub icon: Option<String>,
     pub class: Option<String>,
     pub children: Vec<String>,
+}
+
+/// markdoc-mermaid: the five domains of a Cynefin diagram.
+///
+/// The names are fixed keywords and the positions never move: complex top
+/// left, complicated top right, chaotic bottom left, clear bottom right,
+/// confusion in the middle. An item's domain *is* what the diagram says about
+/// it, which is why this has a layout of its own rather than being boxes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CynefinDomain {
+    Complex,
+    Complicated,
+    Chaotic,
+    Clear,
+    Confusion,
+}
+
+impl CynefinDomain {
+    /// Every domain, in the order their items are stored.
+    pub const ALL: [CynefinDomain; 5] = [
+        CynefinDomain::Complex,
+        CynefinDomain::Complicated,
+        CynefinDomain::Chaotic,
+        CynefinDomain::Clear,
+        CynefinDomain::Confusion,
+    ];
+
+    pub fn from_keyword(word: &str) -> Option<Self> {
+        match word.to_ascii_lowercase().as_str() {
+            "complex" => Some(CynefinDomain::Complex),
+            "complicated" => Some(CynefinDomain::Complicated),
+            "chaotic" => Some(CynefinDomain::Chaotic),
+            "clear" => Some(CynefinDomain::Clear),
+            "confusion" | "disorder" => Some(CynefinDomain::Confusion),
+            _ => None,
+        }
+    }
+
+    pub fn title(self) -> &'static str {
+        match self {
+            CynefinDomain::Complex => "Complex",
+            CynefinDomain::Complicated => "Complicated",
+            CynefinDomain::Chaotic => "Chaotic",
+            CynefinDomain::Clear => "Clear",
+            CynefinDomain::Confusion => "Confusion",
+        }
+    }
+
+    pub fn index(self) -> usize {
+        CynefinDomain::ALL
+            .iter()
+            .position(|d| *d == self)
+            .unwrap_or_default()
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CynefinData {
+    pub title: Option<String>,
+    /// Items per domain, indexed by [`CynefinDomain::index`].
+    pub items: [Vec<String>; 5],
+    /// `complex --> complicated : "label"`.
+    pub links: Vec<CynefinLink>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CynefinLink {
+    pub from: CynefinDomain,
+    pub to: CynefinDomain,
+    pub label: Option<String>,
 }
 
 /// markdoc-mermaid: a Wardley map.
@@ -646,6 +719,7 @@ impl Graph {
             journey_title: None,
             radar_title: None,
             wardley: WardleyData::default(),
+            cynefin: CynefinData::default(),
             gitgraph: GitGraphData::default(),
             class_defs: HashMap::new(),
             node_classes: HashMap::new(),

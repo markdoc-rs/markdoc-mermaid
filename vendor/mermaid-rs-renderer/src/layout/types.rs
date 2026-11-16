@@ -465,7 +465,47 @@ pub enum DiagramData {
     // markdoc-mermaid: boxed -- a Wardley map's geometry is much the largest
     // of these variants, and every other diagram would carry its size.
     Wardley(Box<WardleyLayout>),
+    Cynefin(Box<CynefinLayout>),
     Error(ErrorLayout),
+}
+
+/// markdoc-mermaid: the Cynefin field, measured and placed.
+#[derive(Debug, Clone)]
+pub struct CynefinLayout {
+    pub title: Option<TextBlock>,
+    pub title_y: f32,
+    pub field_x: f32,
+    pub field_y: f32,
+    pub field_size: f32,
+    pub centre_x: f32,
+    pub centre_y: f32,
+    pub ellipse_rx: f32,
+    pub ellipse_ry: f32,
+    pub domains: Vec<CynefinDomainLayout>,
+    pub links: Vec<CynefinLinkLayout>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CynefinDomainLayout {
+    pub domain: crate::ir::CynefinDomain,
+    pub name: TextBlock,
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    pub items: Vec<TextBlock>,
+    /// `+N more`, when the centre is holding items back.
+    pub overflow: Option<TextBlock>,
+    pub item_gap: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct CynefinLinkLayout {
+    pub x1: f32,
+    pub y1: f32,
+    pub x2: f32,
+    pub y2: f32,
+    pub label: Option<TextBlock>,
 }
 
 /// markdoc-mermaid: a Wardley map, measured and placed.

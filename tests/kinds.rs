@@ -169,7 +169,7 @@ fn an_unsupported_diagram_type_is_an_error_naming_itself() {
     // now (`the_added_kinds_*` below). All of them used to draw a two-box
     // flowchart named after the halves of their own header, because a lone
     // `-` read as a link.
-    for header in ["cynefin-beta", "ishikawa-beta", "venn-beta"] {
+    for header in ["ishikawa-beta", "venn-beta"] {
         let err = render(
             &format!("{header}\n  title Something\n"),
             &Index,
@@ -463,22 +463,41 @@ fn a_heading_of_two_lines_is_drawn_on_two_lines() {
 
 /// The geometry-driven kinds: a layout module of their own, because position
 /// is what the diagram says rather than something to be computed.
-const GEOMETRY: &[(&str, &str, &[&str])] = &[(
-    "wardley",
-    "wardley-beta\ntitle Tea Shop Value Chain\n\nanchor Business [0.95, 0.63]\ncomponent Cup of Tea [0.79, 0.61]\ncomponent Kettle [0.43, 0.35]\ncomponent Power [0.10, 0.70]\n\nBusiness -> Cup of Tea\nKettle -> Power\n\nevolve Kettle 0.62\n\nnote \"Standardising power helps\" [0.30, 0.49]\n",
-    &[
-        "Tea Shop Value Chain",
-        "Business",
-        "Cup of Tea",
-        "Kettle",
-        "Power",
-        "Genesis",
-        "Commodity",
-        "Visibility",
-        "Evolution",
-        "Standardising power helps",
-    ],
-)];
+const GEOMETRY: &[(&str, &str, &[&str])] = &[
+    (
+        "cynefin",
+        "cynefin-beta\ntitle Our Situation\n\ncomplex\n\"Probe first\"\n\ncomplicated\n\"Expert analysis needed\"\n\nclear\n\"Known procedure\"\n\nchaotic\n\"Crisis response\"\n\nconfusion\n\"One\"\n\"Two\"\n\"Three\"\n\"Four\"\n\ncomplex --> complicated : \"Pattern identified\"\n",
+        &[
+            "Our Situation",
+            "Complex",
+            "Complicated",
+            "Chaotic",
+            "Clear",
+            "Confusion",
+            "Probe first",
+            "Expert analysis needed",
+            "Pattern identified",
+            // The centre ellipse is small, so it shows three and counts the rest.
+            "+1 more",
+        ],
+    ),
+    (
+        "wardley",
+        "wardley-beta\ntitle Tea Shop Value Chain\n\nanchor Business [0.95, 0.63]\ncomponent Cup of Tea [0.79, 0.61]\ncomponent Kettle [0.43, 0.35]\ncomponent Power [0.10, 0.70]\n\nBusiness -> Cup of Tea\nKettle -> Power\n\nevolve Kettle 0.62\n\nnote \"Standardising power helps\" [0.30, 0.49]\n",
+        &[
+            "Tea Shop Value Chain",
+            "Business",
+            "Cup of Tea",
+            "Kettle",
+            "Power",
+            "Genesis",
+            "Commodity",
+            "Visibility",
+            "Evolution",
+            "Standardising power helps",
+        ],
+    ),
+];
 
 #[test]
 fn the_geometry_kinds_draw_their_content() {

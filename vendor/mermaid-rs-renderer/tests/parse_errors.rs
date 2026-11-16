@@ -351,7 +351,7 @@ fn sequence_unclosed_frame_is_reported() {
 /// Each one is a bare word ending in `-beta`, and the lone `-` in that suffix
 /// used to satisfy the flowchart-edge fallback in `detect_diagram_kind`, so
 /// each came back as a two-box flowchart named after its own header.
-const UNSUPPORTED_HEADERS: &[&str] = &["cynefin-beta", "ishikawa-beta", "venn-beta"];
+const UNSUPPORTED_HEADERS: &[&str] = &["ishikawa-beta", "venn-beta"];
 
 /// The four that are parsed now, each of which is a graph of nodes, edges and
 /// groups. The lone `-` in their `-beta` suffix used to satisfy the flowchart
@@ -430,10 +430,16 @@ fn a_lone_hyphen_does_not_make_a_flowchart() {
 // layout they declare.
 #[test]
 fn the_geometry_kinds_satisfy_the_layout_invariants() {
-    let cases: &[(&str, &str)] = &[(
-        "wardley",
-        "wardley-beta\ntitle Tea\nanchor Business [0.95, 0.63]\ncomponent Kettle [0.43, 0.35]\ncomponent Power [0.10, 0.70]\nBusiness -> Kettle\nKettle -> Power\nevolve Kettle 0.62\nnote \"n\" [0.3, 0.5]\n",
-    )];
+    let cases: &[(&str, &str)] = &[
+        (
+            "cynefin",
+            "cynefin-beta\ntitle T\ncomplex\n\"a\"\nconfusion\n\"b\"\n\"c\"\n\"d\"\n\"e\"\ncomplex --> clear : \"x\"\n",
+        ),
+        (
+            "wardley",
+            "wardley-beta\ntitle Tea\nanchor Business [0.95, 0.63]\ncomponent Kettle [0.43, 0.35]\ncomponent Power [0.10, 0.70]\nBusiness -> Kettle\nKettle -> Power\nevolve Kettle 0.62\nnote \"n\" [0.3, 0.5]\n",
+        ),
+    ];
     let theme = mermaid_rs_renderer::Theme::modern();
     let config = mermaid_rs_renderer::LayoutConfig::default();
     for (name, src) in cases {

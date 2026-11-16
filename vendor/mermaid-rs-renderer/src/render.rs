@@ -415,6 +415,12 @@ pub fn render_svg_with_dimensions(
         return svg;
     }
 
+    if let DiagramData::Cynefin(ref cynefin) = layout.diagram {
+        svg.push_str(&render_cynefin(cynefin, theme, config));
+        svg.push_str("</svg>");
+        return svg;
+    }
+
     if let DiagramData::Wardley(ref wardley) = layout.diagram {
         svg.push_str(&render_wardley(wardley, theme, config));
         svg.push_str("</svg>");
@@ -3476,6 +3482,157 @@ fn render_wardley(
             INK,
             &note.label,
         ));
+    }
+
+    svg
+}
+
+// markdoc-mermaid: the Cynefin framework's five domains.
+//
+// The four quadrants in their fixed places, the confusion ellipse over the
+// middle of them, each domain's name in its corner and its items stacked
+// under it. Mermaid draws a wavy boundary between the ordered and unordered
+// halves; this draws a straight one, which is the one simplification here.
+fn render_cynefin(
+    cynefin: &crate::layout::CynefinLayout,
+    theme: &Theme,
+    _config: &LayoutConfig,
+) -> String {
+    use crate::ir::CynefinDomain;
+
+    const EDGE: &str = "#999999";
+    const INK: &str = "#333333";
+    const LABEL: &str = "#131300";
+
+    let font = normalize_font_family(&theme.font_family);
+    let mut svg = String::new();
+
+    let text = |x: f32,
+                y: f32,
+                anchor: &str,
+                size: f32,
+                fill: &str,
+                weight: &str,
+                block: &TextBlock| {
+        let mut out = String::new();
+        for (idx, line) in block.lines.iter().enumerate() {
+            out.push_str(&format!(
+                "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"{}\" dominant-baseline=\"hanging\" font-family=\"{}\" font-size=\"{}\" font-weight=\"{}\" fill=\"{}\">{}</text>",
+                x,
+                y + idx as f32 * (size + 2.0),
+                anchor,
+                font,
+                size,
+                weight,
+                fill,
+                escape_xml(line)
+            ));
+        }
+        out
+    };
+
+    if let Some(title) = &cynefin.title {
+        svg.push_str(&text(
+            cynefin.field_x + cynefin.field_size / 2.0,
+            cynefin.title_y,
+            "middle",
+            theme.font_size + 2.0,
+            INK,
+            "600",
+            title,
+        ));
+    }
+
+    // Each domain its own tint, so the four read as four even where a link
+    // crosses them.
+    let fills = [
+        (CynefinDomain::Complex, "#EEF3FB"),
+        (CynefinDomain::Complicated, "#F3F0FB"),
+        (CynefinDomain::Chaotic, "#FBEFEF"),
+        (CynefinDomain::Clear, "#EFFBF2"),
+    ];
+    for domain in &cynefin.domains {
+        if domain.domain == CynefinDomain::Confusion {
+            continue;
+        }
+        let fill = fills
+            .iter()
+            .find_map(|(kind, fill)| (*kind == domain.domain).then_some(*fill))
+            .unwrap_or("#FFFFFF");
+        svg.push_str(&format!(
+            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>",
+            domain.x, domain.y, domain.width, domain.height, fill, EDGE
+        ));
+    }
+
+    // Links under the text, over the tints.
+    for link in &cynefin.links {
+        svg.push_str(&format!(
+            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"1.5\" stroke-dasharray=\"6 4\"/>",
+            link.x1, link.y1, link.x2, link.y2, INK
+        ));
+        if let Some(label) = &link.label {
+            svg.push_str(&text(
+                (link.x1 + link.x2) / 2.0,
+                (link.y1 + link.y2) / 2.0 - label.height,
+                "middle",
+                theme.font_size - 2.0,
+                INK,
+                "400",
+                label,
+            ));
+        }
+    }
+
+    for domain in &cynefin.domains {
+        let is_centre = domain.domain == CynefinDomain::Confusion;
+        if is_centre {
+            svg.push_str(&format!(
+                "<ellipse cx=\"{:.2}\" cy=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"#FFFFFF\" stroke=\"{}\" stroke-width=\"1.5\"/>",
+                cynefin.centre_x, cynefin.centre_y, cynefin.ellipse_rx, cynefin.ellipse_ry, EDGE
+            ));
+        }
+        // A quadrant names itself in its top-left; the centre names itself
+        // over its own middle, because it has no corner to use.
+        let (name_x, name_y, anchor) = if is_centre {
+            (cynefin.centre_x, domain.y + 6.0, "middle")
+        } else {
+            (domain.x + 10.0, domain.y + 8.0, "start")
+        };
+        svg.push_str(&text(
+            name_x,
+            name_y,
+            anchor,
+            theme.font_size,
+            LABEL,
+            "600",
+            &domain.name,
+        ));
+
+        let mut cursor = name_y + domain.name.height + domain.item_gap * 2.0;
+        for item in &domain.items {
+            svg.push_str(&text(
+                name_x,
+                cursor,
+                anchor,
+                theme.font_size - 1.0,
+                INK,
+                "400",
+                item,
+            ));
+            cursor += item.height + domain.item_gap;
+        }
+        if let Some(overflow) = &domain.overflow {
+            svg.push_str(&text(
+                name_x,
+                cursor,
+                anchor,
+                theme.font_size - 2.0,
+                EDGE,
+                "400",
+                overflow,
+            ));
+        }
     }
 
     svg

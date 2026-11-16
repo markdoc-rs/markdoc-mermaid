@@ -239,6 +239,33 @@ pub fn validate_layout_invariants(layout: &Layout) -> Result<(), Vec<LayoutInvar
         // markdoc-mermaid: radar carries a title and no geometry of its own; its
         // nodes are checked with every other diagram's above.
         DiagramData::Radar(_) => {}
+        // markdoc-mermaid: the Cynefin field is fixed geometry; what is worth
+        // checking is that the measured text in it is sane.
+        DiagramData::Cynefin(cynefin) => {
+            check_rect(
+                &mut errors,
+                "cynefin.field",
+                cynefin.field_x,
+                cynefin.field_y,
+                cynefin.field_size,
+                cynefin.field_size,
+            );
+            for domain in &cynefin.domains {
+                let path = format!("cynefin.{}", domain.domain.title());
+                check_rect(
+                    &mut errors,
+                    &path,
+                    domain.x,
+                    domain.y,
+                    domain.width,
+                    domain.height,
+                );
+                check_text_block(&mut errors, &format!("{path}.name"), &domain.name);
+                for (idx, item) in domain.items.iter().enumerate() {
+                    check_text_block(&mut errors, &format!("{path}.items[{idx}]"), item);
+                }
+            }
+        }
         // markdoc-mermaid: a Wardley map's coordinates come from its source, so
         // they are the one set here that an author can put anywhere.
         DiagramData::Wardley(wardley) => {

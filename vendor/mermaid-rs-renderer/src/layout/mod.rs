@@ -1,6 +1,7 @@
 mod architecture;
 mod block;
 mod c4;
+mod cynefin;
 mod error;
 mod flowchart;
 mod gantt;
@@ -190,6 +191,9 @@ pub fn compute_layout_with_metrics(
         crate::ir::DiagramKind::Sankey => compute_sankey_layout(graph, theme, config),
         crate::ir::DiagramKind::Architecture => compute_architecture_layout(graph, theme, config),
         crate::ir::DiagramKind::Radar => compute_radar_layout(graph, theme, config),
+        // markdoc-mermaid: a Cynefin field's positions are fixed by the
+        // framework itself.
+        crate::ir::DiagramKind::Cynefin => cynefin::compute_cynefin_layout(graph, theme, config),
         // markdoc-mermaid: a Wardley map's positions come from its source.
         crate::ir::DiagramKind::Wardley => wardley::compute_wardley_layout(graph, theme, config),
         crate::ir::DiagramKind::Treemap => {
