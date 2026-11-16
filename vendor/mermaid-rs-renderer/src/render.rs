@@ -415,6 +415,12 @@ pub fn render_svg_with_dimensions(
         return svg;
     }
 
+    if let DiagramData::Wardley(ref wardley) = layout.diagram {
+        svg.push_str(&render_wardley(wardley, theme, config));
+        svg.push_str("</svg>");
+        return svg;
+    }
+
     if let DiagramData::Quadrant(ref quadrant) = layout.diagram {
         svg.push_str(&render_quadrant(quadrant, theme, config));
         svg.push_str("</svg>");
@@ -3311,6 +3317,168 @@ fn pie_slice_path(cx: f32, cy: f32, radius: f32, start_angle: f32, end_angle: f3
     format!(
         "M {cx:.2} {cy:.2} L {sx:.2} {sy:.2} A {radius:.2} {radius:.2} 0 {large_arc} {sweep} {ex:.2} {ey:.2} Z"
     )
+}
+
+// markdoc-mermaid: a Wardley map.
+//
+// Two axes, visibility up and evolution across, the evolution axis divided
+// into named stages. A component is a dot with its name beside it, an anchor
+// is the user need the map hangs from and is drawn hollow, a link is a plain
+// line, and `evolve` is a dashed arrow to where the component is headed.
+fn render_wardley(
+    wardley: &crate::layout::WardleyLayout,
+    theme: &Theme,
+    _config: &LayoutConfig,
+) -> String {
+    const AXIS: &str = "#999999";
+    const GRID: &str = "#DEDEDE";
+    const INK: &str = "#333333";
+    const DOT: f32 = 6.0;
+
+    let font = normalize_font_family(&theme.font_family);
+    let mut svg = String::new();
+    let (px, py, pw, ph) = (
+        wardley.plot_x,
+        wardley.plot_y,
+        wardley.plot_width,
+        wardley.plot_height,
+    );
+
+    let text = |x: f32, y: f32, anchor: &str, size: f32, fill: &str, block: &TextBlock| {
+        let mut out = String::new();
+        for (idx, line) in block.lines.iter().enumerate() {
+            out.push_str(&format!(
+                "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"{}\" dominant-baseline=\"middle\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
+                x,
+                y + idx as f32 * (size + 3.0),
+                anchor,
+                font,
+                size,
+                fill,
+                escape_xml(line)
+            ));
+        }
+        out
+    };
+
+    if let Some(title) = &wardley.title {
+        svg.push_str(&text(
+            px + pw / 2.0,
+            wardley.title_y + title.height / 2.0,
+            "middle",
+            theme.font_size + 2.0,
+            INK,
+            title,
+        ));
+    }
+
+    // The stage bands, then the plot's own frame over them.
+    for x in &wardley.stage_bounds {
+        svg.push_str(&format!(
+            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"4 3\"/>",
+            x, py, x, py + ph, GRID
+        ));
+    }
+    svg.push_str(&format!(
+        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"none\" stroke=\"{}\" stroke-width=\"1\"/>",
+        px, py, pw, ph, AXIS
+    ));
+    for (block, centre) in &wardley.stage_labels {
+        svg.push_str(&text(
+            *centre,
+            py + ph + 13.0,
+            "middle",
+            theme.font_size - 1.0,
+            INK,
+            block,
+        ));
+    }
+
+    // The axis names: evolution under its stages, visibility turned up the
+    // left edge, which is where a Wardley map puts them.
+    svg.push_str(&text(
+        px + pw / 2.0,
+        py + ph + 32.0,
+        "middle",
+        theme.font_size,
+        INK,
+        &wardley.evolution_axis,
+    ));
+    svg.push_str(&format!(
+        "<g transform=\"translate({:.2}, {:.2}) rotate(-90)\">",
+        px - 20.0,
+        py + ph / 2.0
+    ));
+    svg.push_str(&text(
+        0.0,
+        0.0,
+        "middle",
+        theme.font_size,
+        INK,
+        &wardley.visibility_axis,
+    ));
+    svg.push_str("</g>");
+
+    // Links first, so a dot sits over its own lines.
+    for link in &wardley.links {
+        svg.push_str(&format!(
+            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
+            link.x1, link.y1, link.x2, link.y2, INK
+        ));
+    }
+    for evolution in &wardley.evolutions {
+        let direction = if evolution.to_x >= evolution.from_x {
+            1.0
+        } else {
+            -1.0
+        };
+        let tip = evolution.to_x - direction * DOT;
+        svg.push_str(&format!(
+            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"1.5\" stroke-dasharray=\"5 4\"/>",
+            evolution.from_x + direction * DOT, evolution.y, tip, evolution.y, INK
+        ));
+        svg.push_str(&format!(
+            "<polygon points=\"{:.2},{:.2} {:.2},{:.2} {:.2},{:.2}\" fill=\"{}\"/>",
+            evolution.to_x,
+            evolution.y,
+            tip,
+            evolution.y - 4.0,
+            tip,
+            evolution.y + 4.0,
+            INK
+        ));
+    }
+
+    for component in &wardley.components {
+        // An anchor is hollow: it is the need the map hangs from, not a part
+        // of the thing being built.
+        let fill = if component.anchor { "#FFFFFF" } else { INK };
+        svg.push_str(&format!(
+            "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
+            component.x, component.y, DOT, fill, INK
+        ));
+        svg.push_str(&text(
+            component.x + DOT + 5.0,
+            component.y - DOT - 2.0,
+            "start",
+            theme.font_size - 1.0,
+            INK,
+            &component.label,
+        ));
+    }
+
+    for note in &wardley.notes {
+        svg.push_str(&text(
+            note.x,
+            note.y,
+            "start",
+            theme.font_size - 1.0,
+            INK,
+            &note.label,
+        ));
+    }
+
+    svg
 }
 
 fn render_quadrant(

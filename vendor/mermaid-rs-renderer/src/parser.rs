@@ -116,6 +116,7 @@ pub fn parse_mermaid(input: &str) -> Result<ParseOutput> {
         DiagramKind::Radar => parse_radar_diagram(input),
         DiagramKind::Treemap => parse_treemap_diagram(input),
         DiagramKind::XYChart => parse_xy_chart_diagram(input),
+        DiagramKind::Wardley => parse_wardley_diagram(input),
         DiagramKind::Swimlane => parse_swimlane_diagram(input),
         DiagramKind::UseCase => parse_usecase_diagram(input),
         DiagramKind::TreeView => parse_treeview_diagram(input),
@@ -236,6 +237,9 @@ fn detect_diagram_kind(input: &str) -> Option<DiagramKind> {
         }
         // markdoc-mermaid: before the flowchart, because `swimlane-beta LR`
         // and the rest would otherwise fall through to it.
+        if starts_with_diagram_header(&lower, "wardley") {
+            return Some(DiagramKind::Wardley);
+        }
         if starts_with_diagram_header(&lower, "swimlane") {
             return Some(DiagramKind::Swimlane);
         }
@@ -6671,6 +6675,123 @@ fn parse_eventmodeling_diagram(input: &str) -> Result<ParseOutput> {
     }
 
     Ok(ParseOutput { graph, init_config })
+}
+
+/// `wardley-beta`, then components at explicit coordinates.
+///
+/// A position is `[visibility, evolution]`: visibility first, which mermaid's
+/// own documentation flags as "opposite of typical (x, y) notation". A name
+/// may contain spaces and hyphens -- `component Cup of Tea [0.79, 0.61]` --
+/// so the coordinates are found from the right and the name is what precedes
+/// them.
+fn parse_wardley_diagram(input: &str) -> Result<ParseOutput> {
+    let mut graph = Graph::new();
+    graph.kind = DiagramKind::Wardley;
+    graph.direction = Direction::LeftRight;
+    let (lines, init_config) = preprocess_input(input)?;
+
+    for raw_line in lines {
+        let line = raw_line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let lower = line.to_ascii_lowercase();
+        if lower.starts_with("wardley") {
+            continue;
+        }
+        if let Some(rest) = keyword_rest(line, "title") {
+            graph.wardley.title = Some(strip_quotes(rest));
+            continue;
+        }
+        // `evolution Genesis -> Custom -> Product -> Commodity` renames the
+        // stages of the bottom axis.
+        if let Some(rest) = keyword_rest(line, "evolution") {
+            let stages: Vec<String> = rest
+                .split("->")
+                .map(|stage| strip_quotes(stage.trim()))
+                .filter(|stage| !stage.is_empty())
+                .collect();
+            if !stages.is_empty() {
+                graph.wardley.stages = stages;
+            }
+            continue;
+        }
+        // `evolve <name> <evolution>`: a bare number, not a coordinate pair.
+        if let Some(rest) = keyword_rest(line, "evolve") {
+            if let Some((name, target)) = rest.rsplit_once(char::is_whitespace)
+                && let Ok(target) = target.trim().parse::<f32>()
+            {
+                graph
+                    .wardley
+                    .evolutions
+                    .push((strip_quotes(name.trim()), target));
+            }
+            continue;
+        }
+        if let Some(rest) = keyword_rest(line, "note") {
+            if let Some((text, visibility, evolution)) = split_wardley_position(rest) {
+                graph.wardley.notes.push(crate::ir::WardleyNote {
+                    text: strip_quotes(&text),
+                    visibility,
+                    evolution,
+                });
+            }
+            continue;
+        }
+        let anchored = keyword_rest(line, "anchor").map(|rest| (rest, true));
+        let declared = anchored.or_else(|| keyword_rest(line, "component").map(|r| (r, false)));
+        if let Some((rest, anchor)) = declared {
+            if let Some((name, visibility, evolution)) = split_wardley_position(rest) {
+                graph.wardley.components.push(crate::ir::WardleyComponent {
+                    name: strip_quotes(&name),
+                    visibility,
+                    evolution,
+                    anchor,
+                });
+            }
+            continue;
+        }
+        // Anything else with an arrow in it is a link between two names.
+        if let Some((from, to)) = line.split_once("->") {
+            let (from, to) = (strip_quotes(from.trim()), strip_quotes(to.trim()));
+            if !from.is_empty() && !to.is_empty() {
+                graph.wardley.links.push((from, to));
+            }
+        }
+    }
+
+    Ok(ParseOutput { graph, init_config })
+}
+
+/// `<text> [a, b]` split into its text and the two numbers.
+///
+/// Read from the right, because the text may hold spaces, brackets of its own
+/// in a quoted note, and commas.
+fn split_wardley_position(input: &str) -> Option<(String, f32, f32)> {
+    let input = input.trim();
+    let close = input.rfind(']')?;
+    let open = input[..close].rfind('[')?;
+    let (first, second) = input[open + 1..close].split_once(',')?;
+    let visibility = first.trim().parse::<f32>().ok()?;
+    let evolution = second.trim().parse::<f32>().ok()?;
+    Some((input[..open].trim().to_string(), visibility, evolution))
+}
+
+/// The rest of `line` after `keyword`, when the line is that keyword.
+///
+/// A keyword has to be a whole word: `component` must not match `components`,
+/// and `note` must not swallow a component called `notebook`.
+fn keyword_rest<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
+    let rest = line.get(..keyword.len())?;
+    if !rest.eq_ignore_ascii_case(keyword) {
+        return None;
+    }
+    let rest = &line[keyword.len()..];
+    if rest.is_empty() || rest.starts_with(char::is_whitespace) {
+        Some(rest.trim())
+    } else {
+        None
+    }
 }
 
 /// The first line that is neither blank nor a `%%` comment.

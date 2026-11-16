@@ -169,7 +169,7 @@ fn an_unsupported_diagram_type_is_an_error_naming_itself() {
     // now (`the_added_kinds_*` below). All of them used to draw a two-box
     // flowchart named after the halves of their own header, because a lone
     // `-` read as a link.
-    for header in ["cynefin-beta", "ishikawa-beta", "venn-beta", "wardley-beta"] {
+    for header in ["cynefin-beta", "ishikawa-beta", "venn-beta"] {
         let err = render(
             &format!("{header}\n  title Something\n"),
             &Index,
@@ -459,4 +459,82 @@ fn a_heading_of_two_lines_is_drawn_on_two_lines() {
     );
     // Not as the tag's own characters, in the label or the link's hover text.
     assert!(!d.svg.contains("br/"), "a <br/> reached the picture");
+}
+
+/// The geometry-driven kinds: a layout module of their own, because position
+/// is what the diagram says rather than something to be computed.
+const GEOMETRY: &[(&str, &str, &[&str])] = &[(
+    "wardley",
+    "wardley-beta\ntitle Tea Shop Value Chain\n\nanchor Business [0.95, 0.63]\ncomponent Cup of Tea [0.79, 0.61]\ncomponent Kettle [0.43, 0.35]\ncomponent Power [0.10, 0.70]\n\nBusiness -> Cup of Tea\nKettle -> Power\n\nevolve Kettle 0.62\n\nnote \"Standardising power helps\" [0.30, 0.49]\n",
+    &[
+        "Tea Shop Value Chain",
+        "Business",
+        "Cup of Tea",
+        "Kettle",
+        "Power",
+        "Genesis",
+        "Commodity",
+        "Visibility",
+        "Evolution",
+        "Standardising power helps",
+    ],
+)];
+
+#[test]
+fn the_geometry_kinds_draw_their_content() {
+    for (name, src, wants) in GEOMETRY {
+        let d = render(src, &Index, &Options::default())
+            .unwrap_or_else(|e| panic!("{name} should render: {e}"));
+        let text = text_of(&d.svg);
+        for want in *wants {
+            assert!(text.contains(want), "{name}: {want} is missing from {text}");
+        }
+        assert!(
+            !d.svg.contains("foreignObject"),
+            "{name}: drew its text in a foreignObject"
+        );
+    }
+}
+
+#[test]
+fn a_wardley_position_is_visibility_then_evolution() {
+    // Mermaid's own documentation calls this "opposite of typical (x, y)
+    // notation", so getting it backwards would be easy and silent: the map
+    // would still draw, with every component in the wrong place.
+    //
+    // `[0.95, 0.10]` is nearly all visibility and almost no evolution, so it
+    // belongs at the top left. Reversed it would sit at the bottom right.
+    let d = render(
+        "wardley-beta\ncomponent Corner [0.95, 0.10]\n",
+        &Index,
+        &Options::default(),
+    )
+    .expect("should render");
+    let circle = d
+        .svg
+        .split("<circle")
+        .nth(1)
+        .expect("a component is a circle");
+    let number = |attr: &str| -> f32 {
+        circle
+            .split_once(&format!("{attr}=\""))
+            .and_then(|(_, rest)| rest.split_once('"'))
+            .and_then(|(value, _)| value.parse().ok())
+            .unwrap_or_else(|| panic!("no {attr} in {circle}"))
+    };
+    let (cx, cy) = (number("cx"), number("cy"));
+    let width = d
+        .svg
+        .split_once("viewBox=\"0 0 ")
+        .and_then(|(_, rest)| rest.split_once(' '))
+        .and_then(|(w, _)| w.parse::<f32>().ok())
+        .expect("a viewBox");
+    assert!(
+        cx < width / 2.0,
+        "evolution 0.10 should be left of centre, got cx {cx} of {width}"
+    );
+    assert!(
+        cy < 220.0,
+        "visibility 0.95 should be near the top, got cy {cy}"
+    );
 }

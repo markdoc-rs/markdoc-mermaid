@@ -239,6 +239,46 @@ pub fn validate_layout_invariants(layout: &Layout) -> Result<(), Vec<LayoutInvar
         // markdoc-mermaid: radar carries a title and no geometry of its own; its
         // nodes are checked with every other diagram's above.
         DiagramData::Radar(_) => {}
+        // markdoc-mermaid: a Wardley map's coordinates come from its source, so
+        // they are the one set here that an author can put anywhere.
+        DiagramData::Wardley(wardley) => {
+            check_rect(
+                &mut errors,
+                "wardley.plot",
+                wardley.plot_x,
+                wardley.plot_y,
+                wardley.plot_width,
+                wardley.plot_height,
+            );
+            check_inside_layout(
+                &mut errors,
+                "wardley.plot",
+                wardley.plot_x,
+                wardley.plot_y,
+                wardley.plot_width,
+                wardley.plot_height,
+                layout,
+            );
+            for (idx, component) in wardley.components.iter().enumerate() {
+                let path = format!("wardley.components[{idx}]");
+                check_finite(&mut errors, &format!("{path}.x"), component.x);
+                check_finite(&mut errors, &format!("{path}.y"), component.y);
+                check_text_block(&mut errors, &format!("{path}.label"), &component.label);
+            }
+            for (idx, note) in wardley.notes.iter().enumerate() {
+                let path = format!("wardley.notes[{idx}]");
+                check_finite(&mut errors, &format!("{path}.x"), note.x);
+                check_finite(&mut errors, &format!("{path}.y"), note.y);
+                check_text_block(&mut errors, &format!("{path}.label"), &note.label);
+            }
+            for (idx, link) in wardley.links.iter().enumerate() {
+                let path = format!("wardley.links[{idx}]");
+                check_finite(&mut errors, &format!("{path}.x1"), link.x1);
+                check_finite(&mut errors, &format!("{path}.y1"), link.y1);
+                check_finite(&mut errors, &format!("{path}.x2"), link.x2);
+                check_finite(&mut errors, &format!("{path}.y2"), link.y2);
+            }
+        }
         DiagramData::Graph { state_notes } => {
             for (idx, note) in state_notes.iter().enumerate() {
                 let path = format!("state_notes[{idx}]");

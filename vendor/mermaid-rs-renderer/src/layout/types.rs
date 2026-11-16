@@ -462,7 +462,62 @@ pub enum DiagramData {
     Journey(JourneyLayout),
     // markdoc-mermaid: carries radar's title, which had nowhere to travel.
     Radar(RadarLayout),
+    // markdoc-mermaid: boxed -- a Wardley map's geometry is much the largest
+    // of these variants, and every other diagram would carry its size.
+    Wardley(Box<WardleyLayout>),
     Error(ErrorLayout),
+}
+
+/// markdoc-mermaid: a Wardley map, measured and placed.
+#[derive(Debug, Clone)]
+pub struct WardleyLayout {
+    pub title: Option<TextBlock>,
+    pub title_y: f32,
+    pub plot_x: f32,
+    pub plot_y: f32,
+    pub plot_width: f32,
+    pub plot_height: f32,
+    /// Each evolution stage's name, and the x it is centred on.
+    pub stage_labels: Vec<(TextBlock, f32)>,
+    /// The x of each line between two stages.
+    pub stage_bounds: Vec<f32>,
+    pub visibility_axis: TextBlock,
+    pub evolution_axis: TextBlock,
+    pub components: Vec<WardleyComponentLayout>,
+    pub links: Vec<WardleyLinkLayout>,
+    pub evolutions: Vec<WardleyEvolutionLayout>,
+    pub notes: Vec<WardleyNoteLayout>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WardleyComponentLayout {
+    pub label: TextBlock,
+    pub x: f32,
+    pub y: f32,
+    pub anchor: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct WardleyLinkLayout {
+    pub x1: f32,
+    pub y1: f32,
+    pub x2: f32,
+    pub y2: f32,
+}
+
+/// Where a component is now, and where `evolve` says it is headed.
+#[derive(Debug, Clone)]
+pub struct WardleyEvolutionLayout {
+    pub from_x: f32,
+    pub to_x: f32,
+    pub y: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct WardleyNoteLayout {
+    pub label: TextBlock,
+    pub x: f32,
+    pub y: f32,
 }
 
 /// markdoc-mermaid: what `render_radar` needs that the nodes do not carry.

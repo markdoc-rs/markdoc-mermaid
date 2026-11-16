@@ -351,8 +351,7 @@ fn sequence_unclosed_frame_is_reported() {
 /// Each one is a bare word ending in `-beta`, and the lone `-` in that suffix
 /// used to satisfy the flowchart-edge fallback in `detect_diagram_kind`, so
 /// each came back as a two-box flowchart named after its own header.
-const UNSUPPORTED_HEADERS: &[&str] =
-    &["cynefin-beta", "ishikawa-beta", "venn-beta", "wardley-beta"];
+const UNSUPPORTED_HEADERS: &[&str] = &["cynefin-beta", "ishikawa-beta", "venn-beta"];
 
 /// The four that are parsed now, each of which is a graph of nodes, edges and
 /// groups. The lone `-` in their `-beta` suffix used to satisfy the flowchart
@@ -423,4 +422,32 @@ fn a_hyphenated_node_id_is_not_an_edge() {
 fn a_lone_hyphen_does_not_make_a_flowchart() {
     // `cynefin-beta` reduced: one word, one hyphen, no diagram.
     assert!(parse_mermaid_strict("some-word\n").is_err());
+}
+
+// markdoc-mermaid: the geometry-driven kinds added after the four graph-shaped
+// ones, each with its own layout module. Their coordinates come from the
+// source, so `validate_layout_invariants` is the thing that holds them to the
+// layout they declare.
+#[test]
+fn the_geometry_kinds_satisfy_the_layout_invariants() {
+    let cases: &[(&str, &str)] = &[(
+        "wardley",
+        "wardley-beta\ntitle Tea\nanchor Business [0.95, 0.63]\ncomponent Kettle [0.43, 0.35]\ncomponent Power [0.10, 0.70]\nBusiness -> Kettle\nKettle -> Power\nevolve Kettle 0.62\nnote \"n\" [0.3, 0.5]\n",
+    )];
+    let theme = mermaid_rs_renderer::Theme::modern();
+    let config = mermaid_rs_renderer::LayoutConfig::default();
+    for (name, src) in cases {
+        let parsed = parse_mermaid_strict(src).unwrap_or_else(|e| panic!("{name}: {e:?}"));
+        let layout = mermaid_rs_renderer::compute_layout(&parsed.graph, &theme, &config);
+        if let Err(errors) = mermaid_rs_renderer::layout::validate_layout_invariants(&layout) {
+            panic!(
+                "{name}: {}",
+                errors
+                    .iter()
+                    .map(|e| e.to_string())
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            );
+        }
+    }
 }

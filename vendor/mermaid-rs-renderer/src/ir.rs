@@ -40,6 +40,7 @@ pub enum DiagramKind {
     UseCase,
     TreeView,
     EventModeling,
+    Wardley,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -458,6 +459,8 @@ pub struct Graph {
     // markdoc-mermaid: radar's `title` was parsed and dropped, and render_radar
     // emitted its title element with the text hardcoded empty.
     pub radar_title: Option<String>,
+    // markdoc-mermaid: a Wardley map's components and their coordinates.
+    pub wardley: WardleyData,
     pub gitgraph: GitGraphData,
     pub class_defs: HashMap<String, NodeStyle>,
     pub node_classes: HashMap<String, Vec<String>>,
@@ -520,6 +523,42 @@ pub struct MindmapNode {
     pub icon: Option<String>,
     pub class: Option<String>,
     pub children: Vec<String>,
+}
+
+/// markdoc-mermaid: a Wardley map.
+///
+/// Mermaid writes a position as `[visibility, evolution]` -- visibility first,
+/// which its own documentation flags as "opposite of typical (x, y) notation".
+/// Both run 0 to 1: visibility from infrastructure to user-facing, evolution
+/// from genesis to commodity.
+#[derive(Debug, Clone, Default)]
+pub struct WardleyData {
+    pub title: Option<String>,
+    /// The evolution axis's stages, left to right. Four by default.
+    pub stages: Vec<String>,
+    pub components: Vec<WardleyComponent>,
+    /// `A -> B`, by component name.
+    pub links: Vec<(String, String)>,
+    /// `evolve <name> <evolution>`: where a component is headed.
+    pub evolutions: Vec<(String, f32)>,
+    /// `note "text" [visibility, evolution]`.
+    pub notes: Vec<WardleyNote>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WardleyComponent {
+    pub name: String,
+    pub visibility: f32,
+    pub evolution: f32,
+    /// An `anchor` is the user need a map hangs from, drawn differently.
+    pub anchor: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct WardleyNote {
+    pub text: String,
+    pub visibility: f32,
+    pub evolution: f32,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -606,6 +645,7 @@ impl Graph {
             gantt_display_mode: None,
             journey_title: None,
             radar_title: None,
+            wardley: WardleyData::default(),
             gitgraph: GitGraphData::default(),
             class_defs: HashMap::new(),
             node_classes: HashMap::new(),
