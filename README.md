@@ -25,10 +25,6 @@ and the box text is the heading each id sits on, read out of the document at
 build time. The diagram and the steps are one string, and renaming a step
 redraws the diagram.
 
-Everything else about Mermaid still works. Edge labels, subgraphs, the other
-twenty-odd diagram types — none of it is touched, which is the point of
-choosing Mermaid over a bespoke tag.
-
 ## What it does to the source
 
 Nothing, in place. The author's own lines are never edited; labels and links
@@ -50,6 +46,73 @@ index knows it, and anchor ids are long and distinctive. A bare word in an
 edge label resolves to nothing and is left alone. A label the author wrote by
 hand wins; a `click` they wrote themselves is not duplicated.
 
+## What is supported, per diagram type
+
+The renderer is vendored (`vendor/mermaid-rs-renderer`), so this table is what
+this crate actually does rather than what Mermaid documents. Mermaid's own
+syntax reference lists 31 diagram types; 23 of them draw here.
+
+**Anchor labels** is the feature above: an id resolved to the heading it names.
+It needs a declaration form the diagram's own grammar accepts, and most
+grammars have none — a mindmap or treemap node *is* its text at an indent, so
+there is nothing to attach a label to, and an ER entity is drawn by its id with
+no alias anywhere in the syntax. Where the column is empty the diagram still
+renders; its labels are just the author's own.
+
+**Links** is `click`, which only the flowchart grammar reads. **SVG ids** is
+`data-node-id` on every node and `data-from`/`data-to` beside every
+`data-edge-id`, for a page that wants to make the diagram interactive; the
+types without it are the ones whose renderers draw their own shapes without
+going through a node's link, where the marks cannot be placed safely and the
+diagram is emitted exactly as the renderer drew it.
+
+| diagram | draws | anchor labels | links | SVG ids |
+|---|---|---|---|---|
+| `flowchart` / `graph` | yes | yes | yes | yes |
+| `sequenceDiagram` | yes | yes |  | yes |
+| `classDiagram` | yes | yes |  | yes |
+| `stateDiagram-v2` | yes | yes |  | yes |
+| `block-beta` | yes | yes |  | yes |
+| `erDiagram` | yes |  |  | yes |
+| `mindmap` | yes |  |  | yes |
+| `kanban` | yes |  |  | yes |
+| `treemap-beta` | yes |  |  | yes |
+| `zenuml` | yes |  |  | yes |
+| `packet-beta` | yes |  |  | yes |
+| `architecture-beta` | yes |  |  |  |
+| `requirementDiagram` | yes |  |  |  |
+| `gitGraph` | yes |  |  |  |
+| `C4Context` | yes |  |  |  |
+| `timeline` | yes |  |  |  |
+| `journey` | yes |  |  |  |
+| `quadrantChart` | yes |  |  |  |
+| `radar-beta` | yes |  |  |  |
+| `sankey-beta` | yes |  |  |  |
+| `xychart-beta` | yes |  |  |  |
+| `gantt` | yes |  |  |  |
+| `pie` | yes |  |  |  |
+| `cynefin-beta` | **no** |  |  |  |
+| `eventmodeling` | **no** |  |  |  |
+| `ishikawa-beta` | **no** |  |  |  |
+| `swimlane-beta` | **no** |  |  |  |
+| `treeView-beta` | **no** |  |  |  |
+| `usecase-beta` | **no** |  |  |  |
+| `venn-beta` | **no** |  |  |  |
+| `wardley-beta` | **no** |  |  |  |
+
+The eight at the bottom are the ones the vendored renderer has no parser for.
+They fail with `unsupported Mermaid diagram type: <header>`. Until
+markdoc-mermaid 0.3.0 seven of them silently drew a two-box flowchart named
+after the halves of their own header instead, which is the worse answer of the
+two: see change 3 in `vendor/mermaid-rs-renderer/VENDORED.md`.
+
+Everything *within* a supported type is untouched — edge labels, subgraphs,
+directions, shapes, styling — because none of it passes through this crate.
+
+`markdoc_mermaid::resolves` answers the third column for a diagram kind, so a
+caller can tell an empty `Diagram::resolved` that means "no ids matched" from
+one that means "this kind cannot carry a label".
+
 ## Links, and why the href matters in print
 
 `Anchor::href` is the caller's to choose, and the choice is not cosmetic:
@@ -59,157 +122,22 @@ hand wins; a `click` they wrote themselves is not duplicated.
 | `#step_two` | jumps to the heading | **internal destination** — the reader moves within the document |
 | `/docs/page#step_two` | jumps to the heading | external URI action — opens a browser, or the viewer refuses |
 
-Use the fragment whenever the target is on the page being rendered. Only the
-caller knows which page that is, which is why this crate will not guess.
+## The renderer
 
-## Output a page can own
+Vendored rather than depended on, as of 0.3.0:
+[mermaid-rs-renderer](https://github.com/1jehuang/mermaid-rs-renderer) 0.3.1,
+MIT, published from here as `markdoc-mermaid-renderer`.
+`vendor/mermaid-rs-renderer/VENDORED.md` records the upstream revision and
+every change, each marked in the source.
 
-A renderer emits a finished picture: a white canvas, fixed pixel dimensions,
-and every colour written into the markup. A document needs the opposite. So
-the SVG is reworked:
+It was chosen for two reasons that are not about features. It is MIT, where
+`flowmaid` — the better engine by most measures — is GPL-3.0-or-later and would
+pass that on to anything linking it. And it emits real `<text>` rather than
+`<foreignObject>`, which decides whether a diagram printed into a PDF is
+searchable text or a picture of text; for a manual read offline that is the
+difference between a working document and a screenshot. The CLI and PNG stacks
+are not vendored at all: this crate wants SVG and nothing else.
 
-- the full-bleed background rect is removed — identified by its geometry, not
-  its colour, because the same white is used behind edge labels to stop a line
-  striking through the text;
-- `width` and `height` come off the root, leaving `viewBox`, so CSS can size
-  it for a phone, a text column or a sheet of paper;
-- each baked colour becomes `var(--diagram-*, original)`. With no stylesheet
-  it looks exactly as the renderer drew it; with one it follows the page into
-  dark mode and back out for print.
+## License
 
-| token | what it paints |
-|-------|----------------|
-| `--diagram-text` | node and edge-label text |
-| `--diagram-line` | edges and arrowheads |
-| `--diagram-border` | node and label outlines |
-| `--diagram-node` | node body |
-| `--diagram-surface` | the backplate behind an edge label |
-
-## Room for the labels
-
-A renderer's defaults assume a diagram someone drew by hand, where a node is
-called `A` and an edge is labelled `yes`. Labels taken from headings are
-sentences, and the defaults do not expect them.
-
-Left alone, `mermaid-rs-renderer` 0.3.1 draws **four of the twenty-nine edge
-labels** across this project's three troubleshooting diagrams *underneath* a
-node box. Not crowded, not clipped — invisible, while still sitting in the
-PDF's text layer where a search will find them. On a decision tree the edge
-labels are the branch conditions, so one of those is a reader who cannot tell
-which way to go:
-
-| | lost | height |
-|---|---|---|
-| renderer default (`0.55`) | 4 | — |
-| `Layout::default()` (`0.80`) | **0** | +0.9% |
-
-`0.80` is the centre of the `0.75..=0.85` plateau where all three come out
-clean. Above `0.90` the count climbs again and moves about unpredictably,
-because nothing in the renderer *constrains* a label to stay clear — a wider
-gap only makes a collision less likely. That is why this is a knob with a
-tuned default and not a fixed constant, and why
-`no_branch_condition_is_drawn_underneath_a_box` asserts against the rendered
-geometry rather than against the number.
-
-```rust
-Options {
-    layout: Layout { label_clearance: 1.2, ..Layout::default() },
-    ..Options::default()
-}
-```
-
-`rank_spacing` and `node_spacing` are there too, and both default to `None`,
-meaning *let the renderer measure*. Setting either switches the diagram to
-explicit spacing, because the renderer's adaptive pass treats a configured
-spacing as a **ceiling** — it halves the mean node extent and keeps whichever
-is smaller, so asking for 90 and asking for 110 otherwise draw the same
-picture. Neither fixes a buried label; they only make the diagram taller.
-
-## Using it
-
-```rust
-use markdoc_mermaid::{Anchor, Options, render};
-
-let diagram = render(
-    source,
-    &|id: &str| index.get(id).map(|a| Anchor {
-        label: a.title.clone(),
-        href: if a.url == here { format!("#{id}") } else { format!("{}#{id}", a.url) },
-    }),
-    &Options::default(),
-)?;
-```
-
-`Diagram::resolved` lists the ids that got a label. **Empty is worth a word
-from the caller**: the diagram rendered, but nothing resolved, so either it is
-hand-labelled — fine — or the ids are misspelt and a reader is about to meet a
-diagram of identifiers.
-
-## Making it interactive
-
-`flowchart` returns the nodes and edges `render` draws, read by the
-renderer's own parser so the graph and the picture cannot disagree:
-
-```rust
-let graph = markdoc_mermaid::flowchart(source, &anchors).expect("a flowchart");
-for edge in &graph.edges {
-    // edge.id is the SVG's data-edge-id: "edge-0", "edge-1", … in source order
-    println!("{} {} -> {} {:?}", edge.id, edge.from, edge.to, edge.label);
-}
-```
-
-`nodes` come in the order the source first names them, labelled with the
-heading where an id resolved; `edges` in source order, a chain `a --> b --> c`
-and a fan-out `a --> b & c` each counting as two; an edge into a subgraph
-names the subgraph. Anything but a flowchart is `None`. With the `serde`
-feature every type is `Serialize`.
-
-The SVG carries the same names:
-
-| element | gets |
-|---------|------|
-| everything with a `data-edge-id` (path, label, label backplate) | `data-from`, `data-to` |
-| each node (its shapes, text, and link if any) | wrapped in `<g class="node" data-node-id="…">` |
-
-so `svg.querySelectorAll('[data-to="step_two"]')` finds every edge into a
-step. Nothing else in the drawing changes.
-
-## Choice of renderer
-
-`mermaid-rs-renderer`, for two reasons that are not about features.
-
-**Licence.** `flowmaid` is the better engine by most measures and is
-GPL-3.0-or-later, which it passes to anything linking it. `merman` is
-`0.10.0-alpha.1` and wants Rust 1.95. Neither is a safe foundation for a
-proprietary documentation pipeline today. `tree-sitter-mermaid` is a grammar,
-not a renderer; `mermaid-fixer` is a lint helper.
-
-**`<text>`, not `<foreignObject>`.** That one decides whether a diagram
-printed into a PDF is searchable text or a picture of text — for a manual read
-offline, the difference between a document and a screenshot.
-
-The renderer sits behind this crate's own API on the assumption that it will
-be replaced. Nothing a caller touches names it.
-
-## Status
-
-- [x] Id resolution — labels and `click` links from a document's anchors
-- [x] Author-written labels and `click`s are respected, never overruled
-- [x] SVG reworked so the page owns size and colour
-- [x] Deterministic output — the same source renders the same bytes
-- [x] Spacing control, with a default that keeps branch conditions readable
-- [x] A flowchart's graph as data, and its node and edge ids in the SVG
-- [ ] Diagram types beyond flowchart exercised against real content. The
-      renderer claims 23; only flowchart has been looked at
-- [ ] Rhombus nodes (`A{...}`). 0.3.1 lays them out poorly — a large diamond
-      with the edge label drawn across it. Rectangles are fine; this is worth
-      re-testing on each renderer bump
-- [ ] A diagram too tall for a printed page. Nothing crops or scales it yet,
-      and height is the live risk, not width: these trees render near an
-      aspect ratio of 0.55, and a longer one would run off the sheet.
-      Widening `max_label_width_chars` past the renderer's 22 does flatten
-      them — 0.76 on the safety tree — but it is not free: at 40 chars the
-      *cannot-start* tree loses a label that is readable at 22. Worth
-      exposing, but it needs its own clearance tuning rather than a default
-- [ ] `backedge_cross_weight` is read by nothing in 0.3.1, so a graph with
-      edges pointing back up it has no handle at all. Worth raising upstream
+MIT

@@ -56,6 +56,8 @@
 
 use std::collections::BTreeSet;
 
+use mermaid_rs_renderer::DiagramKind;
+
 use crate::{Anchor, Anchors};
 
 /// Mermaid source with labels and links filled in, and what was filled in.
@@ -64,7 +66,9 @@ pub struct Expanded {
     pub source: String,
     /// Ids that were given a label, in the order the diagram names them.
     /// Empty means nothing resolved — the diagram will still render, but it
-    /// is hand-labelled and the no-drift guarantee does not apply to it.
+    /// is hand-labelled, or of a kind with no declaration form at all, and
+    /// the no-drift guarantee does not apply to it. Never an id whose label
+    /// the diagram's own grammar would not read.
     pub resolved: Vec<String>,
 }
 
@@ -76,14 +80,102 @@ pub struct Expanded {
 /// URI action a reader cannot follow offline. Giving [`Anchor::href`] the
 /// short form is the caller's job, because only the caller knows which page
 /// is being rendered.
-pub fn expand(source: &str, anchors: &dyn Anchors, link: bool) -> Expanded {
+/// How one diagram kind is told that an id has a label.
+///
+/// There is no general form. Each kind's own declaration is the only thing its
+/// parser reads, and most kinds have none at all: a mindmap or a treemap node
+/// *is* its text at an indent, so there is nothing to attach a label to, and an
+/// ER entity is drawn by its id with no alias anywhere in the grammar. Where
+/// that is so this module resolves nothing for the kind rather than appending a
+/// line the parser will mistake for another node — which is what the flowchart
+/// form did when it was used for every kind: `resolved` named the ids while the
+/// labels went nowhere, or worse, arrived as extra boxes.
+#[derive(Clone, Copy)]
+struct Dialect {
+    /// Writes the declaration that gives `id` the label `label`.
+    declare: fn(id: &str, label: &str) -> String,
+    /// Whether the parser reads `click`. Only the flowchart does. For the
+    /// block, ER and mindmap parsers a `click` line becomes nodes of its own
+    /// words, so emitting one there damages the diagram.
+    click: bool,
+    /// Whether naming one node obliges this kind to name them all. The
+    /// sequence validator rejects a message to a participant that no
+    /// `participant` line declared, so declaring one means declaring each.
+    declare_all: bool,
+}
+
+fn dialect(kind: DiagramKind) -> Option<Dialect> {
+    // Verified against the parsers rather than assumed: each form below labels
+    // an existing node and adds none, and no other kind has a form that does.
+    match kind {
+        DiagramKind::Flowchart => Some(Dialect {
+            declare: |id, label| format!("  {id}[\"{label}\"]\n"),
+            click: true,
+            declare_all: false,
+        }),
+        DiagramKind::Block => Some(Dialect {
+            declare: |id, label| format!("  {id}[\"{label}\"]\n"),
+            click: false,
+            declare_all: false,
+        }),
+        DiagramKind::State => Some(Dialect {
+            declare: |id, label| format!("  state \"{label}\" as {id}\n"),
+            click: false,
+            declare_all: false,
+        }),
+        DiagramKind::Class => Some(Dialect {
+            declare: |id, label| format!("  class \"{label}\" as {id}\n"),
+            click: false,
+            declare_all: false,
+        }),
+        DiagramKind::Sequence => Some(Dialect {
+            declare: |id, label| format!("  participant {id} as {label}\n"),
+            click: false,
+            declare_all: true,
+        }),
+        _ => None,
+    }
+}
+
+/// Whether this kind can be told about an id at all.
+pub fn resolves(kind: DiagramKind) -> bool {
+    dialect(kind).is_some()
+}
+
+/// `nodes` is the diagram as the renderer's own parser read it, before any of
+/// this: each id with the label it already has. Two things need it. A kind
+/// that must name every node needs the full list, and an id the author
+/// labelled themselves has to be left alone — which the scanner cannot tell,
+/// because it only knows the bracket forms, while `participant x as Name`,
+/// `state "Name" as x` and `class "Name" as x` all put the label somewhere it
+/// never looks. The parser knows, so it is asked: a label that is not the id
+/// is one the author wrote.
+pub fn expand(
+    source: &str,
+    anchors: &dyn Anchors,
+    link: bool,
+    kind: DiagramKind,
+    nodes: &[(String, String)],
+) -> Expanded {
+    let Some(dialect) = dialect(kind) else {
+        return Expanded {
+            source: source.to_string(),
+            resolved: Vec::new(),
+        };
+    };
     let scan = scan(source);
     let mut declared: Vec<(String, Anchor)> = Vec::new();
+
+    let authored = |id: &str| {
+        nodes
+            .iter()
+            .any(|(node_id, label)| node_id == id && label != id)
+    };
 
     for id in &scan.bare {
         // An id the author labelled themselves is theirs; this module does
         // not overrule it, and a diagram that mixes the two still works.
-        if scan.labelled.contains(id) {
+        if scan.labelled.contains(id) || authored(id) {
             continue;
         }
         if let Some(anchor) = anchors.get(id) {
@@ -101,9 +193,19 @@ pub fn expand(source: &str, anchors: &dyn Anchors, link: bool) -> Expanded {
     let mut out = source.trim_end().to_string();
     out.push_str("\n\n%% labels and links resolved from document anchors\n");
     for (id, anchor) in &declared {
-        out.push_str(&format!("  {id}[\"{}\"]\n", quote(&anchor.label)));
+        out.push_str(&(dialect.declare)(id, &quote(&anchor.label)));
     }
-    if link {
+    if dialect.declare_all {
+        // The ones with no heading still have to be named, or the diagram
+        // that parsed before this ran stops parsing now. A bare
+        // `participant x` does not disturb a label the author gave it.
+        for (id, _) in nodes {
+            if !declared.iter().any(|(declared_id, _)| declared_id == id) {
+                out.push_str(&format!("  participant {id}\n"));
+            }
+        }
+    }
+    if link && dialect.click {
         for (id, anchor) in &declared {
             // Skip an id the author already wired up: two `click` lines for
             // one node is Mermaid's problem to resolve, and it should not
@@ -219,7 +321,21 @@ fn scan(source: &str) -> Scan {
 
         if c.is_ascii_alphabetic() || c == '_' {
             let start = i;
-            while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
+            // A hyphen belongs to the word only when a letter or digit
+            // follows it, which is what separates a slug from an arrow:
+            // `cannot-connect` is one id, while `a-->b` stops at `a`
+            // because the next character is another `-`, and `a-.->b`
+            // because it is a `.`. Documentation anchors are usually
+            // hyphenated, so a scanner that stopped at the first `-` never
+            // saw most of the ids it exists to find.
+            while i < chars.len()
+                && (chars[i].is_ascii_alphanumeric()
+                    || chars[i] == '_'
+                    || (chars[i] == '-'
+                        && chars
+                            .get(i + 1)
+                            .is_some_and(|n| n.is_ascii_alphanumeric() || *n == '_')))
+            {
                 i += 1;
             }
             let word: String = chars[start..i].iter().collect();
@@ -261,6 +377,12 @@ fn closing(open: char) -> Option<char> {
 
 #[cfg(test)]
 mod tests {
+    // Every test here is a flowchart; `expand`'s other arguments are the
+    // diagram kind and, for a sequence diagram, the participants to name.
+    fn expand_flowchart(source: &str, anchors: &dyn Anchors, link: bool) -> Expanded {
+        expand(source, anchors, link, DiagramKind::Flowchart, &[])
+    }
+
     use super::*;
     use std::collections::HashMap;
 
@@ -288,7 +410,7 @@ mod tests {
 
     #[test]
     fn a_bare_id_gets_the_heading_as_its_label() {
-        let out = expand("flowchart TD\n  ts_can2 --> ts_is\n", &anchors(), true);
+        let out = expand_flowchart("flowchart TD\n  ts_can2 --> ts_is\n", &anchors(), true);
         assert!(
             out.source
                 .contains(r#"ts_can2["Can you ping the switch?"]"#),
@@ -308,13 +430,13 @@ mod tests {
         // Appending is what lets an arrow form this crate has never heard of
         // pass through intact.
         let src = "flowchart TD\n  ts_can2 -. retry .-> ts_is\n  ts_is ==> ts_does\n";
-        let out = expand(src, &anchors(), true);
+        let out = expand_flowchart(src, &anchors(), true);
         assert!(out.source.starts_with(src.trim_end()), "{}", out.source);
     }
 
     #[test]
     fn a_node_becomes_a_link() {
-        let out = expand("flowchart TD\n  ts_can2 --> ts_is\n", &anchors(), true);
+        let out = expand_flowchart("flowchart TD\n  ts_can2 --> ts_is\n", &anchors(), true);
         assert!(
             out.source.contains("click ts_can2 \"#ts_can2\""),
             "{}",
@@ -324,7 +446,7 @@ mod tests {
 
     #[test]
     fn links_can_be_left_out() {
-        let out = expand("flowchart TD\n  ts_can2 --> ts_is\n", &anchors(), false);
+        let out = expand_flowchart("flowchart TD\n  ts_can2 --> ts_is\n", &anchors(), false);
         assert!(!out.source.contains("click"), "{}", out.source);
         assert!(out.source.contains("ts_can2[\""), "{}", out.source);
     }
@@ -332,7 +454,7 @@ mod tests {
     #[test]
     fn a_label_the_author_wrote_wins() {
         // Mixing the two is allowed; this module does not overrule a person.
-        let out = expand(
+        let out = expand_flowchart(
             "flowchart TD\n  ts_can2[Ping the switch] --> ts_is\n",
             &anchors(),
             true,
@@ -348,7 +470,7 @@ mod tests {
 
     #[test]
     fn a_label_separated_by_a_space_still_counts_as_the_authors() {
-        let out = expand(
+        let out = expand_flowchart(
             "flowchart TD\n  ts_can2 [Mine] --> ts_is\n",
             &anchors(),
             true,
@@ -359,7 +481,7 @@ mod tests {
     #[test]
     fn an_edge_label_is_not_mistaken_for_an_id() {
         // The resolver is the filter: `Ping` and `failed` resolve to nothing.
-        let out = expand(
+        let out = expand_flowchart(
             "flowchart TD\n  ts_can2 -- Ping failed --> ts_is\n",
             &anchors(),
             true,
@@ -371,7 +493,7 @@ mod tests {
     #[test]
     fn an_id_inside_prose_is_left_alone() {
         // Turning a word of a sentence into a link would baffle a reader.
-        let out = expand(
+        let out = expand_flowchart(
             "flowchart TD\n  a[\"See ts_can2 for detail\"] --> b\n",
             &anchors(),
             true,
@@ -381,7 +503,7 @@ mod tests {
 
     #[test]
     fn a_comment_is_not_scanned() {
-        let out = expand(
+        let out = expand_flowchart(
             "flowchart TD\n  %% ts_can2 is next\n  ts_is --> ts_does\n",
             &anchors(),
             true,
@@ -391,7 +513,7 @@ mod tests {
 
     #[test]
     fn a_pipe_label_is_not_scanned() {
-        let out = expand(
+        let out = expand_flowchart(
             "flowchart TD\n  ts_is -->|ts_can2| ts_does\n",
             &anchors(),
             true,
@@ -402,7 +524,7 @@ mod tests {
     #[test]
     fn a_click_the_author_wrote_is_not_duplicated() {
         let src = "flowchart TD\n  ts_can2 --> ts_is\n  click ts_can2 \"/elsewhere\"\n";
-        let out = expand(src, &anchors(), true);
+        let out = expand_flowchart(src, &anchors(), true);
         assert_eq!(
             out.source.matches("click ts_can2").count(),
             1,
@@ -416,7 +538,7 @@ mod tests {
     #[test]
     fn a_quote_in_a_heading_does_not_break_the_label() {
         let map = Map(HashMap::from([("q", (r#"The "Power" button"#, "#q"))]));
-        let out = expand("flowchart TD\n  q --> q2\n", &map, true);
+        let out = expand_flowchart("flowchart TD\n  q --> q2\n", &map, true);
         assert!(
             out.source.contains(r#"q["The #quot;Power#quot; button"]"#),
             "{}",
@@ -427,7 +549,7 @@ mod tests {
     #[test]
     fn nothing_resolving_leaves_the_source_exactly_as_it_was() {
         let src = "flowchart TD\n  A[One] --> B[Two]\n";
-        let out = expand(src, &anchors(), true);
+        let out = expand_flowchart(src, &anchors(), true);
         assert_eq!(out.source, src);
         assert!(out.resolved.is_empty());
     }
@@ -436,7 +558,7 @@ mod tests {
     fn declarations_follow_the_order_of_the_diagram() {
         // So a human reading the expanded source can follow it against the
         // original rather than against an alphabet.
-        let out = expand(
+        let out = expand_flowchart(
             "flowchart TD\n  ts_does --> ts_can2\n  ts_can2 --> ts_is\n",
             &anchors(),
             true,

@@ -47,7 +47,7 @@
 //!
 //! # Choice of renderer
 //!
-//! `mermaid-rs-renderer`, for two reasons that are not about features.
+//! `mermaid-rs-renderer` 0.3.1, for two reasons that are not about features.
 //!
 //! It is MIT. `flowmaid` is the better engine by most measures and is
 //! **GPL-3.0-or-later**, which it would pass to anything linking it;
@@ -59,8 +59,25 @@
 //! text, which for a manual read offline is the difference between a working
 //! document and a screenshot.
 //!
-//! The renderer is kept behind this crate's own API on the assumption that
-//! it will be replaced. Nothing a caller touches names it.
+//! It is **vendored**, as of 0.3.0, in `vendor/mermaid-rs-renderer`, and
+//! published from this repository as `markdoc-mermaid-renderer`. The reason
+//! is the fixes it needed: an unrecognised diagram header used to come back
+//! as a two-box flowchart named after the halves of its own header, and a
+//! hyphen in an id read as an edge, which is fatal for a crate whose input
+//! is documentation anchors. `VENDORED.md` beside it records the upstream
+//! revision and every change, each marked in the source.
+//!
+//! The renderer is still kept behind this crate's own API on the assumption
+//! that it will be replaced. Nothing a caller touches names it.
+//!
+//! # What a diagram kind supports
+//!
+//! Resolution needs a declaration form the diagram's own grammar accepts,
+//! and most grammars have none: a mindmap node *is* its text at an indent,
+//! and an ER entity is drawn by its id with no alias in the syntax. Where
+//! there is no form, nothing is resolved and [`Diagram::resolved`] is empty,
+//! rather than naming ids whose labels went nowhere. [`resolves`] answers
+//! for a kind, and `README.md` has the table.
 
 mod expand;
 mod graph;
@@ -68,7 +85,7 @@ mod layout;
 mod route;
 mod theme;
 
-pub use expand::{Expanded, expand as expand_source};
+pub use expand::{Expanded, expand as expand_source, resolves};
 pub use graph::{Edge, Flowchart, Node, Subgraph, flowchart};
 pub use layout::Layout;
 
@@ -136,10 +153,16 @@ pub struct Diagram {
     pub svg: String,
     /// Ids that were given a label, in the order the diagram names them.
     ///
+    /// An id named here reached the picture as its heading. That is the whole
+    /// promise, and before 0.3.0 it was not kept: the flowchart's declaration
+    /// form was appended whatever the diagram was, so a sequence or class
+    /// diagram reported ids whose labels went nowhere.
+    ///
     /// Empty is worth a word from the caller: the diagram rendered, but
     /// nothing was resolved, so either it is hand-labelled — fine, and the
     /// no-drift guarantee simply does not apply — or the ids are misspelt and
-    /// a reader is about to meet a diagram of identifiers.
+    /// a reader is about to meet a diagram of identifiers, or the kind has no
+    /// way to carry a label at all ([`resolves`]).
     pub resolved: Vec<String>,
 }
 
@@ -168,24 +191,41 @@ pub fn render(source: &str, anchors: &dyn Anchors, options: &Options) -> Result<
     if source.trim().is_empty() {
         return Err(Error::Empty);
     }
-    let expanded = expand::expand(source, anchors, options.link);
+    // The author's source is parsed first, because how a label can be declared
+    // at all depends on the diagram kind, and a sequence diagram needs every
+    // participant named once any of them is (`expand`).
+    let probe = mermaid_rs_renderer::parse_mermaid_strict(source)
+        .map_err(|e| Error::Render(format!("{e:?}")))?;
+    let nodes: Vec<(String, String)> = probe
+        .graph
+        .nodes
+        .iter()
+        .map(|(id, node)| (id.clone(), node.label.clone()))
+        .collect();
+    let expanded = expand::expand(source, anchors, options.link, probe.graph.kind, &nodes);
     // `render_with_options` is these three steps; they are taken one at a
     // time so the edges can be rerouted between layout and drawing (`route`).
-    let parsed = mermaid_rs_renderer::parse_mermaid_strict(&expanded.source)
-        .map_err(|e| Error::Render(format!("{e:?}")))?;
+    // Nothing resolved means nothing was appended, and the first parse stands.
+    let parsed = if expanded.resolved.is_empty() {
+        probe
+    } else {
+        mermaid_rs_renderer::parse_mermaid_strict(&expanded.source)
+            .map_err(|e| Error::Render(format!("{e:?}")))?
+    };
     let theme = mermaid_rs_renderer::Theme::modern();
     let config = options.layout.to_config();
     let mut layout = mermaid_rs_renderer::compute_layout(&parsed.graph, &theme, &config);
-    let flowchart = parsed.graph.kind == mermaid_rs_renderer::DiagramKind::Flowchart;
-    if options.layout.tidy_edges && flowchart {
+    // `tidy` is flowchart geometry -- it reroutes an edge label that landed on
+    // a box -- and means nothing to a diagram laid out any other way.
+    if options.layout.tidy_edges && parsed.graph.kind == mermaid_rs_renderer::DiagramKind::Flowchart
+    {
         route::tidy(&mut layout, parsed.graph.direction);
     }
-    // A flowchart's nodes and edge ends are named in the SVG (`graph`).
-    let svg = if flowchart {
-        graph::draw(layout, &theme, &config)
-    } else {
-        mermaid_rs_renderer::render_svg(&layout, &theme, &config)
-    };
+    // Nodes and edge ends are named in the SVG for every kind (`graph`). Where
+    // a kind's renderer does not wrap a node in its link, `draw` finds its
+    // marks missing and falls back to naming the edges alone, so a kind it
+    // cannot name is drawn exactly as the renderer drew it before.
+    let svg = graph::draw(layout, &theme, &config);
     let svg = if options.themeable {
         theme::themeable(&svg, &options.class)
     } else {

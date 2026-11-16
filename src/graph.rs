@@ -2,7 +2,15 @@
 //!
 //! Read by the renderer's own parser, from the same expanded source
 //! [`render`](crate::render) draws, so the graph and the picture cannot
-//! disagree. Flowcharts only.
+//! disagree.
+//!
+//! [`flowchart`] -- the graph *as data* -- is flowcharts only, because
+//! [`Flowchart`] describes a flowchart and nothing else. `draw`, which
+//! names the nodes and edge ends in the SVG, is not: it works from the
+//! layout's ids, which every kind has. Where a kind's renderer draws its
+//! shapes without going through a node's link there is nowhere to put the
+//! marks, and `draw` finds them missing and emits what the renderer drew,
+//! so a kind it cannot name is never a kind it damages.
 
 use mermaid_rs_renderer::{DiagramKind, Graph, Layout, LayoutConfig, NodeLink, Theme};
 
@@ -102,13 +110,24 @@ pub fn flowchart(source: &str, anchors: &dyn Anchors) -> Option<Flowchart> {
     if source.trim().is_empty() {
         return None;
     }
-    // Links change nothing about the graph, so none are asked for.
-    let expanded = expand::expand(source, anchors, false);
-    let parsed = mermaid_rs_renderer::parse_mermaid_strict(&expanded.source).ok()?;
-    let graph = &parsed.graph;
-    if graph.kind != DiagramKind::Flowchart {
+    let probe = mermaid_rs_renderer::parse_mermaid_strict(source).ok()?;
+    if probe.graph.kind != DiagramKind::Flowchart {
         return None;
     }
+    // Links change nothing about the graph, so none are asked for.
+    let nodes: Vec<(String, String)> = probe
+        .graph
+        .nodes
+        .iter()
+        .map(|(id, node)| (id.clone(), node.label.clone()))
+        .collect();
+    let expanded = expand::expand(source, anchors, false, probe.graph.kind, &nodes);
+    let parsed = if expanded.resolved.is_empty() {
+        probe
+    } else {
+        mermaid_rs_renderer::parse_mermaid_strict(&expanded.source).ok()?
+    };
+    let graph = &parsed.graph;
     let heading = |id: &str| {
         expanded
             .resolved
