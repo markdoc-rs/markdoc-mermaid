@@ -440,11 +440,31 @@ fn place(
     // A plate hides what runs under it, so a place clear of every other
     // edge first; failing that, one that crosses an edge, as Mermaid's own
     // labels do.
-    candidates
+    let centred = candidates
         .iter()
         .copied()
         .find(|&c| free(c, false))
-        .or_else(|| candidates.iter().copied().find(|&c| free(c, true)))
+        .or_else(|| candidates.iter().copied().find(|&c| free(c, true)));
+    if centred.is_some() {
+        return centred;
+    }
+    // Still nowhere. Slide the plate along the leg it names rather than
+    // give the route up: two answers into one box put their labels in the
+    // same channel, and the second often misses by a few units. The offset
+    // keeps the plate over the leg, so the label still sits on its own
+    // edge, and `free` still keeps it off every box and every other label.
+    let reach = block.width / 2.0 + PAD_X - CLEAR;
+    let slid = |over_lines: bool| {
+        candidates
+            .iter()
+            .flat_map(|&(x, y)| {
+                [0.35, -0.35, 0.7, -0.7, 0.95, -0.95]
+                    .into_iter()
+                    .map(move |f| (x + f * reach, y))
+            })
+            .find(|&c| free(c, over_lines))
+    };
+    slid(false).or_else(|| slid(true))
 }
 
 #[cfg(test)]
