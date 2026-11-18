@@ -48,9 +48,9 @@ hand wins; a `click` they wrote themselves is not duplicated.
 
 ## What is supported, per diagram type
 
-The renderer is vendored (`vendor/mermaid-rs-renderer`), so this table is what
-this crate actually does rather than what Mermaid documents. Mermaid's own
-syntax reference lists 31 diagram types; all 31 draw here.
+This table is what this crate actually does rather than what Mermaid
+documents. The renderer is [merman](https://github.com/Latias94/merman), which
+draws every type Mermaid documents.
 
 **Anchor labels** is the feature above: an id resolved to the heading it names.
 It needs a declaration form the diagram's own grammar accepts, and most
@@ -59,12 +59,13 @@ there is nothing to attach a label to, and an ER entity is drawn by its id with
 no alias anywhere in the syntax. Where the column is empty the diagram still
 renders; its labels are just the author's own.
 
-**Links** is `click`, which only the flowchart grammar reads. **SVG ids** is
-`data-node-id` on every node and `data-from`/`data-to` beside every
-`data-edge-id`, for a page that wants to make the diagram interactive; the
-types without it are the ones whose renderers draw their own shapes without
-going through a node's link, where the marks cannot be placed safely and the
-diagram is emitted exactly as the renderer drew it.
+**Links** is `click`, read by the flowchart and swimlane grammars. **SVG
+ids** is merman's `data-id`, for a page that wants to make the diagram
+interactive, with `data-et` saying what each element is — `node` and `edge`
+for a flowchart, `participant`/`message`/`life-line` for a sequence, and
+edges only for class, state, ER and mindmap. A block diagram carries none.
+`data-from`/`data-to` are not emitted: take an edge's ends from
+`Edge::from`/`Edge::to`.
 
 | diagram | draws | anchor labels | links | SVG ids |
 |---|---|---|---|---|
@@ -72,9 +73,9 @@ diagram is emitted exactly as the renderer drew it.
 | `sequenceDiagram` | yes | yes |  | yes |
 | `classDiagram` | yes | yes |  | yes |
 | `stateDiagram-v2` | yes | yes |  | yes |
-| `block-beta` | yes | yes |  | yes |
+| `block-beta` | yes | yes |  |  |
 | `swimlane-beta` | yes | yes | yes | yes |
-| `usecase-beta` | yes | yes | yes | yes |
+| `usecase-beta` | yes |  |  | yes |
 | `erDiagram` | yes |  |  | yes |
 | `mindmap` | yes |  |  | yes |
 | `kanban` | yes |  |  | yes |
@@ -100,29 +101,21 @@ diagram is emitted exactly as the renderer drew it.
 | `venn-beta` | yes |  |  |  |
 | `wardley-beta` | yes |  |  |  |
 
-Every diagram type mermaid's syntax reference documents is drawn. Four of them
-— `swimlane-beta`, `usecase-beta`, `treeView-beta` and `eventmodeling` — are
-graphs of nodes, edges and groups, and reuse the layouts that already draw
-those. Four more — `cynefin-beta`, `ishikawa-beta`, `venn-beta` and
-`wardley-beta` — needed geometry of their own, because position *is* what they
-say: a domain field, a fishbone's spine and bones, overlapping circles, a
-value chain against an evolution axis. Each has its own layout module.
+Every diagram type mermaid's syntax reference documents is drawn, because
+merman draws them all.
+
+`usecase-beta` draws but does not take anchor labels: in merman a use case id
+carries a *kind*, so declaring `Browse("heading")` after `actor Browse` is
+rejected as a conflicting kind. Labelling one without re-declaring its kind
+would need the declaration form to know the kind.
 
 A header this renderer has no parser for — a typo, or a diagram type newer
 than this crate — fails with `unsupported Mermaid diagram type: <header>`.
-Before markdoc-mermaid 0.3.0 a word ending in `-beta` instead drew a two-box
-flowchart named after the halves of itself, because the lone `-` in it read as
-a link, which is the worse answer of the two: see change 3 in
-`vendor/mermaid-rs-renderer/VENDORED.md`.
+merman's own message names no diagram, so the header is quoted back into the
+error.
 
-Four places where the drawing is honestly simpler than mermaid's own, all of
-them noted here rather than in the table: a `treeView` is a tree of boxes
-where mermaid draws an indented list with elbow connectors; a swimlane's lanes
-are `subgraph` boxes rather than full-width bands; a `cynefin` field has a
-straight boundary between its halves where mermaid draws a wavy one; and a
-`venn` of four or more sets places its circles on a ring, which draws every
-set but cannot realise every intersection — no arrangement of circles can,
-which is why four-set Venn diagrams are normally drawn with ellipses.
+Where merman's drawing differs from Mermaid-in-a-browser, merman's own
+documentation is the place to look: this crate does not lay anything out.
 
 Everything *within* a supported type is untouched — edge labels, subgraphs,
 directions, shapes, styling — because none of it passes through this crate.
@@ -140,21 +133,100 @@ one that means "this kind cannot carry a label".
 | `#step_two` | jumps to the heading | **internal destination** — the reader moves within the document |
 | `/docs/page#step_two` | jumps to the heading | external URI action — opens a browser, or the viewer refuses |
 
+## Migrating from 0.3
+
+0.4.0 draws with [merman](https://github.com/Latias94/merman). `render`,
+`Anchor`, `Anchors`, `flowchart` and the graph types keep their shape; the
+rest is additions, two removals and the renderer's own SVG.
+
+- `Options` gained `id` and `measure`, so a struct literal naming only the
+  old fields needs `..Options::default()`.
+- `Layout` lost `label_clearance` and `tidy_edges`, and gained
+  `wrapping_width` (180), `classic_look` (on), `palette`, `font_family`,
+  `label_slack` (1.0), `corner_radius` and `line_width`. It is
+  `#[non_exhaustive]`, so build one from `Layout::default()`.
+- `Diagram` gained `size`, `font_size` and `min_font_size`, and is
+  `#[non_exhaustive]` too. The renderer writes no `font-size` attribute for
+  a caller to scrape, which is why the last two exist.
+- The SVG hooks are merman's: `data-id` with `data-et` on a node and on an
+  edge, and an edge id of `L_<from>_<to>_<n>`. Take an edge's ends from
+  `Edge::from` and `Edge::to` rather than splitting the id.
+- Every rule the SVG carries is scoped under the root's id, so it outranks
+  a page's own rule for the same box. In themeable output, set a
+  `--diagram-…` token on the node and the diagram's own rule paints from it;
+  otherwise use `!important`, or name the diagram in the selector, which
+  means setting `Options::id`.
+- A very large flowchart no longer renders; see the renderer's ceiling
+  below.
+- `usecase-beta` no longer takes anchor labels, for the reason above.
+
+## What a themed page can and cannot recolour
+
+A kind is only reliably readable in **both** a light and a dark page when
+its text *and* the surface under it are the page's. Where a kind paints its
+own surfaces — a slice, a bar, a tile, a quadrant — the page's text colour
+lands on Mermaid's fill, and one of the two is then wrong.
+
+Flowchart, sequence, class, state, block, swimlane, use case, ER, tree view,
+packet and mindmap are the kinds whose surfaces this crate can reach, and
+they are the ones a themed page can rely on. Where a surface is Mermaid's
+own — a gantt bar, a timeline section, a treemap tile, a mindmap section, a
+note — the text keeps Mermaid's matching colour rather than taking the
+page's, because tokenising one half of a pair is what makes contrast worse.
+
+**An author's own colours stay the author's.** A `style`, a `classDef` or a
+sequence diagram's `rect rgb(200, 220, 255)` keeps the fill it names, while
+the text inside it takes the page's colour. A diagram that sets its own
+colours wants `themeable: false`, or colours chosen to work with the page.
+
+A diagram also carries its stylesheet in a `<style>` element, which is text
+content: a search index or reading-time estimate that walks the page will
+count it unless it skips `<style>`.
+
 ## The renderer
 
-Vendored rather than depended on, as of 0.3.0:
-[mermaid-rs-renderer](https://github.com/1jehuang/mermaid-rs-renderer) 0.3.1,
-MIT, published from here as `markdoc-mermaid-renderer`.
-`vendor/mermaid-rs-renderer/VENDORED.md` records the upstream revision and
-every change, each marked in the source.
-
-It was chosen for two reasons that are not about features. It is MIT, where
-`flowmaid` — the better engine by most measures — is GPL-3.0-or-later and would
-pass that on to anything linking it. And it emits real `<text>` rather than
+[merman](https://github.com/Latias94/merman), which is Mermaid.js headless
+in Rust, drawn through `SvgPipeline::resvg_safe()`. That pipeline turns
+Mermaid's HTML labels into real `<text>` rather than leaving them in a
 `<foreignObject>`, which decides whether a diagram printed into a PDF is
-searchable text or a picture of text; for a manual read offline that is the
-difference between a working document and a screenshot. The CLI and PNG stacks
-are not vendored at all: this crate wants SVG and nothing else.
+searchable text or a picture of text. It is kept behind this crate's own
+API: nothing a caller touches names it.
+
+`default-features = false` drops `layout-elk`, which pulls in
+`merman-elk-layered` (EPL-2.0); a diagram asking for `layout: elk` falls
+back to dagre.
+
+## What the renderer gets wrong
+
+merman has defects this crate cannot work around, written up for upstream.
+These reach a diagram you draw:
+
+- **An emphasis marker in a `stateDiagram-v2` label is eaten.** A `**` draws
+  the words bold and a `_` draws them italic, markers gone, because a state
+  label is read as markdown *before* any escape. Every other kind that reads
+  markdown draws the characters as typed.
+- **A literal entity reference cannot be drawn in a label.** `&amp;` as
+  *text* is decoded twice, once with the source's placeholders and once by
+  the label reader, and nothing a caller writes survives both.
+- **An escape in a `sankey-beta` field fails the diagram**, quoted or not,
+  where every other kind takes Mermaid's escapes in a label.
+- **A large flowchart does not draw.** The renderer's label pass has a fixed
+  ceiling of selector-matching work with no setting to raise it, which a
+  flowchart of a few hundred boxes reaches. `render` returns an error saying
+  so, and the answer is to split the diagram.
+- **A long `radar-beta` legend entry runs outside the declared canvas**, so
+  a consumer that honours that size clips it.
+
+Two more are avoided by how this crate writes what it appends, which is
+worth knowing if you read the SVG yourself. A quoted label is escaped with
+entities (`&lt;`) rather than Mermaid's own `#lt;`, because a `#lt;`
+reaching the label reader draws *every* label of a state diagram empty; and
+the placeholder characters the renderer leaves in a `click` tooltip are
+decoded after the render.
+
+Output is byte-identical run to run, process to process and across font
+sets. It is not byte-identical between a glibc build and a musl one, which
+matters only to a consumer keeping golden SVGs across platforms.
 
 ## License
 

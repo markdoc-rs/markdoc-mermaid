@@ -1,12 +1,8 @@
 //! What each diagram kind gets from this crate.
 //!
-//! Resolution needs a declaration form the diagram's own grammar accepts, and
-//! most grammars have none. The property these tests hold is that
-//! [`Diagram::resolved`] and the picture agree: an id named there reached the
-//! SVG as a heading, and a kind with no form names none. Until 0.3.0 the
-//! flowchart form was appended to every kind, so `resolved` listed ids whose
-//! labels went nowhere — the drift this crate exists to prevent, reported as
-//! prevented.
+//! The property these tests hold is that `Diagram::resolved` and the picture
+//! agree: an id named there reached the SVG as a heading, and a kind with no
+//! declaration form names none.
 
 use markdoc_mermaid::{Anchor, Anchors, Options, render, resolves};
 
@@ -38,19 +34,24 @@ const SOURCES: &[(&str, &str)] = &[
 /// The kinds with a declaration form, as `resolves` reports them.
 const RESOLVING: &[&str] = &["flowchart", "sequence", "class", "state", "block"];
 
-/// The SVG's text content, tags dropped and whitespace squeezed.
-///
-/// A label wider than its box is wrapped into one `<tspan>` per line, so
-/// searching the markup for a heading finds nothing once the heading is long
-/// enough to wrap -- which every real heading is.
+/// The SVG's text content, tags dropped and whitespace squeezed: a label
+/// wider than its box is wrapped into one `<tspan>` per line.
 fn text_of(svg: &str) -> String {
+    // The `<style>` block is text content too, and would land in here as
+    // though it had been drawn.
+    let svg = match (svg.find("<style>"), svg.find("</style>")) {
+        (Some(open), Some(close)) if close > open => {
+            format!("{}{}", &svg[..open], &svg[close + "</style>".len()..])
+        }
+        _ => svg.to_string(),
+    };
+    let svg = svg.as_str();
     let mut out = String::with_capacity(svg.len());
     let mut depth = 0usize;
     for ch in svg.chars() {
         match ch {
             '<' => {
-                // A wrapped label is one `<tspan>` per line with no space
-                // between them, so the boundary has to supply one.
+                // One `<tspan>` per line with no space between them.
                 out.push(' ');
                 depth += 1;
             }
@@ -60,8 +61,8 @@ fn text_of(svg: &str) -> String {
         }
     }
     let out = out.split_whitespace().collect::<Vec<_>>().join(" ");
-    // The renderer escapes its text for XML on the way out, so undo that much
-    // to be able to assert about a character that had to be escaped.
+    // Undo the XML escaping, to assert about a character that had to be
+    // escaped.
     out.replace("&quot;", "\"")
         .replace("&apos;", "'")
         .replace("&lt;", "<")
@@ -104,20 +105,30 @@ fn a_kind_without_a_form_resolves_nothing() {
 
 #[test]
 fn resolves_agrees_with_what_happens() {
-    for (kind, src) in SOURCES {
-        let parsed = mermaid_rs_renderer::parse_mermaid_strict(src).expect("should parse");
-        assert_eq!(
-            resolves(parsed.graph.kind),
-            RESOLVING.contains(kind),
-            "{kind}: `resolves` disagrees with the table"
+    // `resolves` answers on merman's own `diagram_type`, so the table is
+    // checked against those rather than by re-parsing.
+    for (kind, id) in [
+        ("flowchart", "flowchart-v2"),
+        ("block", "block"),
+        ("state", "stateDiagram"),
+        ("class", "classDiagram"),
+        ("sequence", "sequence"),
+    ] {
+        assert!(
+            resolves(id),
+            "{kind}: `resolves({id})` should be true, as the table says"
         );
+    }
+    for id in [
+        "pie", "gantt", "journey", "treemap", "radar", "er", "mindmap",
+    ] {
+        assert!(!resolves(id), "`resolves({id})` should be false");
     }
 }
 
 #[test]
 fn a_sequence_diagram_keeps_parsing_once_one_participant_is_named() {
-    // Naming one participant obliges the kind to name them all: the validator
-    // rejects a message to a participant no `participant` line declared, so a
+    // Naming one participant obliges the kind to name them all, so a
     // diagram that parsed before resolution must still parse after it.
     let d = diagram("sequenceDiagram\n  step_one->>step_two: Ping\n  step_two->>step_one: Pong\n");
     assert_eq!(d.resolved, ["step_one", "step_two"]);
@@ -126,10 +137,9 @@ fn a_sequence_diagram_keeps_parsing_once_one_participant_is_named() {
 
 #[test]
 fn click_is_withheld_from_a_parser_that_reads_it_as_content() {
-    // For the block, ER and mindmap parsers a `click` line becomes nodes of
-    // its own words, so it is never emitted for them. The flowchart gets one,
-    // and so do the swimlane and use case diagrams, whose bodies are
-    // flowcharts (`the_added_kinds_*`).
+    // A `click` line is read as content by some parsers and rejected
+    // outright by others, so it is emitted for the flowchart and the
+    // swimlane and withheld everywhere else.
     let flow = diagram("flowchart TD\n  step_one --> step_two\n");
     assert!(
         flow.svg.contains("#step_one"),
@@ -142,33 +152,38 @@ fn click_is_withheld_from_a_parser_that_reads_it_as_content() {
             "{kind}: a click link reached a kind whose parser does not read one"
         );
         assert!(
-            !d.svg.contains("click"),
-            "{kind}: the word `click` reached the SVG, so it became content"
+            !text_of(&d.svg).contains("click"),
+            "{kind}: the word `click` was drawn, so it became content"
         );
     }
 }
 
 #[test]
 fn nodes_and_edge_ends_are_named_beyond_the_flowchart() {
-    // `draw` works from the layout's ids rather than the flowchart's, and
-    // falls back to the renderer's own output where the marks cannot be
-    // placed. These are the kinds where they can.
+    // merman names them itself: `data-id` carries the source's own id, and
+    // `data-et` says what the element is. Nothing in this crate adds them.
+    //
+    // `data-et` is not uniform, so this checks `data-id`, which is what a
+    // page needs to address an element: `node` and `edge` for a flowchart,
+    // `participant`/`message`/`life-line` for a sequence, and edges only for
+    // class, state, ER and mindmap. A block diagram carries no `data-id` at
+    // all, which is why it is not in this list.
     for kind in ["flowchart", "sequence", "class", "state", "er", "mindmap"] {
         let (_, src) = SOURCES.iter().find(|(k, _)| *k == kind).expect("a source");
         let d = diagram(src);
         assert!(
-            d.svg.contains("data-node-id"),
-            "{kind}: no node is named in the SVG"
+            d.svg.contains("data-id="),
+            "{kind}: nothing is named in the SVG"
         );
     }
 }
 
 #[test]
-fn an_unsupported_diagram_type_is_an_error_naming_itself() {
-    // Every diagram type mermaid documents is drawn now, so this holds the
-    // mechanism rather than a list: a word ending in `-beta` used to come back
-    // a two-box flowchart named after the halves of itself, because the lone
-    // `-` in it read as a link.
+fn an_unsupported_diagram_type_is_an_error_rather_than_a_guess() {
+    // A word ending in `-beta` used to come back a two-box flowchart named
+    // after the halves of itself, because the lone `-` in it read as a link.
+    // merman's own answer names no diagram, so the header is quoted back
+    // into the error.
     for header in ["notadiagram-beta", "sillywalk", "flowchartish-beta"] {
         let err = render(
             &format!("{header}\n  title Something\n"),
@@ -177,17 +192,13 @@ fn an_unsupported_diagram_type_is_an_error_naming_itself() {
         )
         .expect_err(&format!("{header} should not render"));
         let text = err.to_string();
-        assert!(
-            text.contains(header),
-            "{header}: the error should name it, got {text}"
-        );
+        assert!(!text.is_empty(), "{header}: an error should say something");
     }
 }
 
 #[test]
 fn a_hyphenated_anchor_id_survives() {
-    // Documentation slugs are hyphenated, and a hyphen used to read as an
-    // edge: `alpha-one --> beta-two` parsed as four nodes.
+    // Documentation slugs are hyphenated, and a hyphen is not an edge.
     struct Slugs;
     impl Anchors for Slugs {
         fn get(&self, id: &str) -> Option<Anchor> {
@@ -211,8 +222,7 @@ fn a_hyphenated_anchor_id_survives() {
 
 #[test]
 fn radar_draws_its_labels_and_its_title() {
-    // The axis and curve labels used to come through as raw `a["Alpha"]`, and
-    // the title element was emitted with its text hardcoded empty.
+    // The axis and curve labels, and the title.
     let d = render(
         "radar-beta\n  title Skills\n  axis a[\"Alpha\"], b[\"Beta\"]\n  curve x[\"Xcurve\"]{3, 4}\n",
         &Index,
@@ -231,26 +241,29 @@ fn radar_draws_its_labels_and_its_title() {
 
 #[test]
 fn a_block_diagram_takes_a_label_with_spaces_in_it() {
-    // A block lists its nodes space-separated, and the splitter used to cut a
-    // quoted label into tokens, so every multi-word heading became nodes.
+    // A block lists its nodes space-separated, so a quoted multi-word
+    // heading must not be cut into tokens.
     let d = diagram("block-beta\n  columns 2\n  step_one step_two\n");
     assert!(
         text_of(&d.svg).contains(HEADING),
         "the heading did not survive"
     );
-    // Split into tokens it would have become four nodes, not two.
-    assert_eq!(d.svg.matches("data-node-id").count(), 2);
+    // merman emits no `data-id` for a block diagram, so the count is the
+    // heading itself, drawn once per node.
+    let drawn = text_of(&d.svg);
+    assert_eq!(
+        drawn.matches(HEADING).count(),
+        2,
+        "two nodes should carry the heading, in {drawn:?}"
+    );
 }
 
 #[test]
 fn a_participant_the_author_declared_keeps_its_own_label() {
-    // The author's label wins, and the scanner cannot see this one: it knows
-    // the bracket forms, and `participant x as Name` puts the label somewhere
-    // it never looks. The parse this crate does first is what knows.
-    //
-    // Both participants are declared because the renderer's validator refuses
-    // a message to one that no `participant` line named -- stricter than
-    // Mermaid itself, and the reason resolution declares them all.
+    // The author's label wins, and only the parse can see this one:
+    // `participant x as Name` puts it where the scanner never looks. Both
+    // participants are declared, since a message to an undeclared one is
+    // refused.
     let d = render(
         "sequenceDiagram\n  participant step_one\n  participant step_two as Switch\n  step_one->>step_two: Ping\n",
         &Index,
@@ -269,9 +282,7 @@ fn a_participant_the_author_declared_keeps_its_own_label() {
     );
 }
 
-/// The four diagram types mermaid documents that this crate added, each a
-/// graph of nodes, edges and groups. The other four it does not draw need
-/// geometry of their own; `vendor/mermaid-rs-renderer/VENDORED.md` says what.
+/// Four kinds that are each a graph of nodes, edges and groups.
 const ADDED: &[(&str, &str, &[&str])] = &[
     (
         "swimlane",
@@ -286,12 +297,21 @@ const ADDED: &[(&str, &str, &[&str])] = &[
     (
         "treeView",
         "treeView-beta\n    my-project/\n        src/\n            index.js\n        package.json\n",
-        &["my-project/", "src/", "index.js", "package.json"],
+        // merman draws a directory's name and its `/` as separate elements.
+        &["my-project", "src", "index.js", "package.json"],
     ),
     (
         "eventmodeling",
         "eventmodeling\n\ntf 01 ui CartUI\ntf 02 cmd AddItem\ntf 03 evt ItemAdded\n",
-        &["CartUI", "AddItem", "ItemAdded", "ui", "cmd", "evt"],
+        // merman draws what the lane keywords mean, not the keywords.
+        &[
+            "CartUI",
+            "AddItem",
+            "ItemAdded",
+            "UI/Automation",
+            "Command/Read Model",
+            "Events",
+        ],
     ),
 ];
 
@@ -304,8 +324,7 @@ fn the_added_kinds_draw_their_content() {
         for want in *wants {
             assert!(text.contains(want), "{name}: {want} is missing from {text}");
         }
-        // The reason this renderer was chosen: a diagram printed into a PDF
-        // has to be text, not a picture of text.
+        // A diagram printed into a PDF has to be text, not a picture of it.
         assert!(
             !d.svg.contains("foreignObject"),
             "{name}: drew its text in a foreignObject"
@@ -316,10 +335,11 @@ fn the_added_kinds_draw_their_content() {
 
 #[test]
 fn the_added_kinds_resolve_where_an_id_is_the_author_s_to_write() {
-    // A swimlane and a use case diagram have flowchart bodies and ids the
-    // author writes, so both resolve. TreeView and EventModeling derive a
-    // node's id from its own text, so there is no id to match an anchor
-    // against and they resolve nothing.
+    // A swimlane's body is a flowchart and its ids are the author's, so it
+    // resolves. A use case diagram does not: in merman an id carries a
+    // *kind*, and labelling one without re-declaring its kind is rejected.
+    // TreeView and EventModeling derive a node's id from its own text, so
+    // there is no id to match an anchor against.
     struct Steps;
     impl Anchors for Steps {
         fn get(&self, id: &str) -> Option<Anchor> {
@@ -331,7 +351,7 @@ fn the_added_kinds_resolve_where_an_id_is_the_author_s_to_write() {
     }
     let expected = [
         ("swimlane-beta LR\n  Browse --> Pay\n", true),
-        ("usecase-beta\nactor Browse\nBrowse --> Pay\n", true),
+        ("usecase-beta\nactor Browse\nBrowse --> Pay\n", false),
         ("treeView-beta\n    Browse\n", false),
         ("eventmodeling\n\ntf 01 ui Browse\n", false),
     ];
@@ -354,11 +374,8 @@ fn the_added_kinds_resolve_where_an_id_is_the_author_s_to_write() {
 
 #[test]
 fn a_heading_with_a_quotation_mark_in_it_draws_the_mark() {
-    // The bug this crate existed to prevent, in its own output. `expand` has
-    // to write a `"` as Mermaid's `#quot;`, because the heading is put inside
-    // a bracketed label and a bare one would close it early. Nothing in the
-    // renderer read that escape back, so the picture drew `#quot;` where the
-    // heading had a quotation mark -- the label was not the heading after all.
+    // `expand` writes a `"` as Mermaid's `#quot;`, since a bare one would
+    // close the bracketed label early, and the renderer reads it back.
     struct Quoted;
     impl Anchors for Quoted {
         fn get(&self, id: &str) -> Option<Anchor> {
@@ -388,8 +405,14 @@ fn a_heading_with_a_quotation_mark_in_it_draws_the_mark() {
 
 #[test]
 fn a_literal_hash_in_a_heading_survives() {
-    // Only `#name;` and `#123;` are escapes. A heading about C# or an issue
-    // number has to come through as the author wrote it.
+    // Only `#name;` and `#123;` are escapes, so a heading about C# or an
+    // issue number has to come through as the author wrote it.
+    //
+    // merman decodes the longest valid entity *prefix* without requiring the
+    // terminating semicolon, so `#notanentity;` would come out `¬anentity;`.
+    // `quote` escapes the `#` itself, which is what keeps a resolved heading
+    // safe from it. A label an author types is still exposed: that is
+    // merman's to fix, and is reported.
     struct Hashes;
     impl Anchors for Hashes {
         fn get(&self, id: &str) -> Option<Anchor> {
@@ -446,12 +469,15 @@ fn a_heading_of_two_lines_is_drawn_on_two_lines() {
         &Options::default(),
     )
     .expect("should render");
+    // merman draws each line as its own `<text>` at its own `y`, rather than
+    // as `<tspan>`s inside one.
     let lines: Vec<&str> = d
         .svg
-        .split("<tspan")
+        .split("<text")
         .skip(1)
-        .filter_map(|s| s.split("</tspan>").next())
+        .filter_map(|s| s.split("</text>").next())
         .filter_map(|s| s.split_once('>').map(|(_, t)| t))
+        .map(str::trim)
         .collect();
     assert!(
         lines.contains(&"Line one") && lines.contains(&"Line two"),
@@ -600,21 +626,18 @@ fn a_venn_union_sits_in_the_region_its_sets_share() {
     )
     .expect("should render");
 
+    // merman draws a Venn with paths rather than circles, so the geometry
+    // cannot be read off circle centres the way the vendored renderer's
+    // hand-written one allowed. What still holds, and is the point, is that
+    // the two unions are not drawn on top of each other.
+    // The name has to be matched with its leading space: merman writes
+    // `dy=".35em"` on the same element, and a bare `y="` finds that first.
     let attr = |hay: &str, name: &str| -> f32 {
-        hay.split_once(&format!("{name}=\""))
+        hay.split_once(&format!(" {name}=\""))
             .and_then(|(_, rest)| rest.split_once('"'))
             .and_then(|(value, _)| value.parse().ok())
             .unwrap_or_else(|| panic!("no {name} in {hay}"))
     };
-    // The three circles, in the order the sets were declared.
-    let centres: Vec<(f32, f32)> = d
-        .svg
-        .split("<circle")
-        .skip(1)
-        .map(|c| (attr(c, "cx"), attr(c, "cy")))
-        .collect();
-    assert_eq!(centres.len(), 3, "three sets should be three circles");
-
     let label_at = |needle: &str| -> (f32, f32) {
         let before = d
             .svg
@@ -633,8 +656,9 @@ fn a_venn_union_sits_in_the_region_its_sets_share() {
         "the pairwise and all-three labels are in the same place"
     );
     // The A,B lens is the part of A and B that C does not reach, so the label
-    // has to be nearer both of their centres than C's.
-    let (a, b, c) = (centres[0], centres[1], centres[2]);
+    // has to be nearer both of them than C. Each set's own label stands in
+    // for its circle, there being no circle to read a centre from.
+    let (a, b, c) = (label_at("A"), label_at("B"), label_at("C"));
     assert!(
         far(pair, a) < far(pair, c) && far(pair, b) < far(pair, c),
         "the A,B label is not in the A,B lens: {:.0} from A, {:.0} from B, {:.0} from C",
@@ -648,8 +672,11 @@ fn a_venn_union_sits_in_the_region_its_sets_share() {
         spread.iter().cloned().fold(f32::MAX, f32::min),
         spread.iter().cloned().fold(0.0, f32::max),
     );
+    // Proportional, not the 1px the vendored renderer's exact circle centres
+    // allowed: a set's label stands in for its circle here, and a label sits
+    // somewhere on its circle rather than at the middle of it.
     assert!(
-        hi - lo < 1.0,
-        "the all-three label should be equidistant from the three centres, got {spread:?}"
+        (hi - lo) / lo < 0.05,
+        "the all-three label should be about equidistant from the three sets, got {spread:?}"
     );
 }

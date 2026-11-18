@@ -1,31 +1,37 @@
 [package]
 name = "markdoc-mermaid"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2024"
+# merman 0.10 declares 1.95, so this cannot usefully claim less.
+rust-version = "1.95"
 license = "MIT"
 description = "Mermaid diagrams for Markdoc, with node labels resolved from document anchors."
 repository = "https://github.com/markdoc-rs/markdoc-mermaid"
+readme = "README.md"
+keywords = ["mermaid", "markdoc", "diagram", "svg", "documentation"]
+categories = ["text-processing", "visualization"]
 
 [lib]
 name = "markdoc_mermaid"
 path = "src/lib.rs"
 
 [dependencies]
-# Vendored: mermaid-rs-renderer 0.3.1 with the diagram types and fixes listed
-# in vendor/mermaid-rs-renderer/VENDORED.md. A published crate's dependencies
-# come from crates.io (packaging drops `path`, and `[patch]` does not travel),
-# so the fork is published there as `markdoc-mermaid-renderer` and named
-# `mermaid-rs-renderer` here. Publish it first:
-# `cargo publish --manifest-path vendor/mermaid-rs-renderer/Cargo.toml`.
-# Its CLI and PNG stacks are not vendored at all, rather than switched off by
-# a feature: this crate wants SVG and nothing else.
-mermaid-rs-renderer = { package = "markdoc-mermaid-renderer", version = "0.3.2", path = "vendor/mermaid-rs-renderer" }
+# `default-features = false` drops `layout-elk`, which pulls in
+# `merman-elk-layered` (EPL-2.0); a diagram asking for `layout: elk` then
+# falls back to dagre. What is left is permissive bar three MPL-2.0 crates
+# (cssparser, cssparser-macros, dtoa-short), and builds for
+# wasm32-unknown-unknown as it stands.
+merman = { version = "0.10", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape"] }
+# merman's site config is a JSON value (`SourcePresentationConfig::from_value`).
+serde_json = "1"
 # `Serialize` for the flowchart graph (`Flowchart` and its parts), for a
 # page that ships it beside the SVG as JSON.
 serde = { version = "1", features = ["derive"], optional = true }
 
-[dev-dependencies]
-serde_json = "1"
-
 [features]
 serde = ["dep:serde"]
+
+[package.metadata.docs.rs]
+# The `serde` feature's impls are part of the API a caller reads, and docs.rs
+# builds default features otherwise.
+all-features = true
